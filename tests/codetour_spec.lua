@@ -459,6 +459,123 @@ describe("codetour.notes", function()
   end)
 end)
 
+describe("codetour.picker", function()
+  local original_cwd
+  local repo
+  local original_select
+
+  before_each(function()
+    original_cwd = vim.fn.getcwd()
+    repo = tmpdir()
+    init_git_repo(repo)
+    vim.cmd("cd " .. vim.fn.fnameescape(repo))
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.anchor"] = nil
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.picker"] = nil
+    original_select = vim.ui.select
+  end)
+  after_each(function()
+    vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
+    vim.ui.select = original_select
+  end)
+
+  it("stops() bails with notify when no active tour", function()
+    local picker = require "codetour.picker"
+    local called = false
+    vim.ui.select = function()
+      called = true
+    end
+    picker.stops()
+    assert.is_false(called, "should not have opened a picker")
+  end)
+
+  it("stops() bails when active tour has no stops", function()
+    local state = require "codetour.state"
+    state.create "empty"
+    local picker = require "codetour.picker"
+    local called = false
+    vim.ui.select = function()
+      called = true
+    end
+    picker.stops()
+    assert.is_false(called)
+  end)
+
+  it("stops() opens a picker with one entry per stop", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "third"
+
+    local captured_items
+    vim.ui.select = function(items, _, on_choice)
+      captured_items = items
+      on_choice(items[2]) -- pick the second stop
+    end
+
+    require("codetour.picker").stops()
+    assert.equals(2, #captured_items)
+    assert.is_truthy(captured_items[1].display:match "first")
+    assert.is_truthy(captured_items[2].display:match "third")
+    -- Default action jumped to the second stop's line
+    assert.equals(3, vim.api.nvim_win_get_cursor(0)[1])
+  end)
+
+  it("tours() bails when no tours exist", function()
+    local picker = require "codetour.picker"
+    local called = false
+    vim.ui.select = function()
+      called = true
+    end
+    picker.tours()
+    assert.is_false(called)
+  end)
+
+  it("tours() shows all tours with stop counts and active marker", function()
+    local state = require "codetour.state"
+    state.create "auth"
+    state.create "billing" -- now active
+
+    local captured_items
+    vim.ui.select = function(items, _, _)
+      captured_items = items
+    end
+
+    require("codetour.picker").tours()
+    assert.equals(2, #captured_items)
+    -- Find the active one
+    local active_entry
+    for _, e in ipairs(captured_items) do
+      if e.tour.is_active then
+        active_entry = e
+      end
+    end
+    assert.equals("billing", active_entry.tour.name)
+    assert.is_truthy(active_entry.display:match "active")
+  end)
+
+  it("tours() default action selects the chosen tour", function()
+    local state = require "codetour.state"
+    state.create "auth"
+    state.create "billing"
+    assert.equals("billing", state.data.active_tour)
+
+    vim.ui.select = function(items, _, on_choice)
+      -- pick the first entry (auth, since list_tours sorts alphabetically)
+      on_choice(items[1])
+    end
+
+    require("codetour.picker").tours()
+    assert.equals("auth", state.data.active_tour, "picker should switch to chosen tour")
+  end)
+end)
+
 describe("codetour.state", function()
   local state
   local original_cwd

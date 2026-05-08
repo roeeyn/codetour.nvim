@@ -50,6 +50,16 @@ function M.list_tours()
   return state.list_tours()
 end
 
+---Open a picker over the active tour's stops. Default action: jump to the stop.
+function M.list()
+  require("codetour.picker").stops()
+end
+
+---Open a picker over available tours. Default action: switch to that tour.
+function M.pick_tour()
+  require("codetour.picker").tours()
+end
+
 ---@param note string? Optional note describing why this stop matters
 function M.add(note)
   state.add(note)

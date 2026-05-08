@@ -45,12 +45,16 @@ vim.api.nvim_create_user_command("TourCreate", function(args)
 end, { nargs = "?", desc = "codetour: create a new tour and make it active" })
 
 vim.api.nvim_create_user_command("TourSelect", function(args)
-  local name = args.args ~= "" and args.args or nil
-  require("codetour").select(name)
+  if args.args == "" then
+    -- No arg → open the tour picker.
+    require("codetour").pick_tour()
+  else
+    require("codetour").select(args.args)
+  end
 end, {
   nargs = "?",
   complete = tour_complete,
-  desc = "codetour: switch the active tour",
+  desc = "codetour: switch the active tour (no arg opens a picker)",
 })
 
 vim.api.nvim_create_user_command("TourDelete", function(args)
@@ -86,6 +90,10 @@ end, { desc = "codetour: populate quickfix with current tour; jump to stop 1" })
 vim.api.nvim_create_user_command("TourClose", function()
   require("codetour").close()
 end, { desc = "codetour: restore prior quickfix and close cwindow" })
+
+vim.api.nvim_create_user_command("TourList", function()
+  require("codetour").list()
+end, { desc = "codetour: open a picker over stops in the active tour" })
 
 vim.api.nvim_create_user_command("TourDump", function()
   require("codetour").dump()

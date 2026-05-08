@@ -354,4 +354,22 @@ function M.list_tours()
   return storage.list_tours()
 end
 
+---Like list_tours() but enriched with stop counts and active-marker.
+---Used by the tour picker. One file read per tour — fine for the small N
+---we expect (typically <10 tours per repo).
+---@return { name: string, stops_count: integer, is_active: boolean }[]
+function M.tours_with_meta()
+  M.ensure_loaded()
+  local out = {}
+  for _, name in ipairs(storage.list_tours()) do
+    local loaded = storage.load(name)
+    table.insert(out, {
+      name = name,
+      stops_count = loaded and #loaded.stops or 0,
+      is_active = M.data.active_tour == name,
+    })
+  end
+  return out
+end
+
 return M
