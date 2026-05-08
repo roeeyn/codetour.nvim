@@ -666,6 +666,67 @@ describe("codetour.state", function()
     assert.equals(1, #state.data.stops, "no removal should occur")
   end)
 
+  it("add() preserves the current quickfix index when syncing", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    -- Three stops, then prime a tour qf and move to entry 3
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "second"
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "third"
+
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = {
+        { filename = tmp, lnum = 1, col = 1, text = "first" },
+        { filename = tmp, lnum = 2, col = 1, text = "second" },
+        { filename = tmp, lnum = 3, col = 1, text = "third" },
+      },
+    })
+    vim.fn.setqflist({}, "r", { nr = 0, idx = 3 })
+    assert.equals(3, vim.fn.getqflist({ idx = 0 }).idx, "preflight: should be at idx 3")
+
+    -- Add a fourth stop; the qf cursor should stay at entry 3
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    state.add "fourth"
+    assert.equals(3, vim.fn.getqflist({ idx = 0 }).idx, "qf idx should be preserved at 3 after add")
+  end)
+
+  it("remove() clamps the quickfix index when items shrink past the saved position", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "second"
+
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = {
+        { filename = tmp, lnum = 1, col = 1, text = "first" },
+        { filename = tmp, lnum = 2, col = 1, text = "second" },
+      },
+    })
+    vim.fn.setqflist({}, "r", { nr = 0, idx = 2 })
+
+    -- Remove the second stop; qf shrinks to 1 item, idx should clamp to 1
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.remove()
+    assert.equals(1, vim.fn.getqflist({ idx = 0 }).idx, "qf idx should clamp to last remaining item")
+  end)
+
   it("add() updates the quickfix list when a tour is active", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a", "b", "c", "d" }, tmp)

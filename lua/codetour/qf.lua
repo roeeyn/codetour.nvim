@@ -58,7 +58,7 @@ end
 ---in the qf view immediately. No-op if the user is on some other qf list.
 ---@param stops CodeTour.Stop[]
 function M.update_if_tour_active(stops)
-  local current = vim.fn.getqflist { title = 1, idx = 1 }
+  local current = vim.fn.getqflist { title = 1, idx = 0 }
   local title = (current and current.title) or ""
   if not title:match "^tour:" then
     return
@@ -74,9 +74,15 @@ function M.update_if_tour_active(stops)
     })
   end
 
-  -- 'r' replaces the current list in place (no new entry on the qf stack).
-  -- Preserve idx so the user's qf cursor doesn't snap back to the start.
-  vim.fn.setqflist({}, "r", { items = items, title = title, idx = current.idx })
+  -- 'r' replaces items in the current list. nr = 0 is required for `idx` to
+  -- be honored — without it nvim silently ignores the idx and resets the qf
+  -- cursor to entry 1. We also clamp idx to the new list length so it stays
+  -- valid after a remove that shrinks the list.
+  local what = { nr = 0, items = items, title = title }
+  if #items > 0 then
+    what.idx = math.max(1, math.min(current.idx or 1, #items))
+  end
+  vim.fn.setqflist({}, "r", what)
 end
 
 function M.close()
