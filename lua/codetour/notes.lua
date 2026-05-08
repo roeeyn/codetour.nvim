@@ -72,6 +72,15 @@ function M.refresh(bufnr, stops, path_name)
     return
   end
 
+  -- Clear any existing note extmarks in this buffer's namespace and rebuild
+  -- from scratch. This is the defensive shape because extmarks live in
+  -- nvim-side per-buffer state while _buf_marks lives in Lua module memory --
+  -- the two can drift apart on module reloads (lazy dev mode, :Lazy reload,
+  -- package.loaded clears). Re-creating each time is cheap (extmarks are O(1))
+  -- and makes refresh self-healing regardless of how we got here.
+  vim.api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
+  M._buf_marks[bufnr] = {}
+
   local anchor = require "codetour.anchor"
   local total = #stops
   for idx, stop in ipairs(stops) do

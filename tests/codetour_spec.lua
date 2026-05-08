@@ -497,6 +497,60 @@ describe("codetour.state", function()
     assert.equals("after", items[1].text)
   end)
 
+  it("does not duplicate virt_lines when _buf_marks is stale (module reload case)", function()
+    -- Simulates the exact scenario the user hit: extmarks survive in the buffer
+    -- (because they're nvim-side state) but our in-memory _buf_marks gets reset
+    -- (e.g. lazy.nvim dev reload, :Lazy reload, package.loaded clear). Without
+    -- the defensive rebuild, refresh would create a NEW extmark for a stop that
+    -- already has one, and the user sees two virt_lines stacked.
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1", "line 2", "line 3" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.anchor"] = nil
+    local state = require "codetour.state"
+    local notes = require "codetour.notes"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+
+    -- Wipe in-memory note tracking but leave the buffer's extmark intact.
+    notes._buf_marks = {}
+
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "second"
+
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, {})
+    assert.equals(2, #marks, "expected exactly 2 note extmarks (one per stop), not duplicates from stale state")
+  end)
+
+  it("does not duplicate virt_lines when stops are added incrementally", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1", "line 2", "line 3", "line 4", "line 5" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.anchor"] = nil
+    local state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, {})
+    assert.equals(1, #marks, "after first :TourAdd, expected 1 note extmark")
+
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "second"
+    marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, {})
+    assert.equals(2, #marks, "after second :TourAdd, expected exactly 2 note extmarks (no duplicates)")
+  end)
+
   it("edit_note() leaves a non-tour quickfix list alone", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "line 1" }, tmp)
