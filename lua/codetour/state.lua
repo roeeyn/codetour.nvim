@@ -99,9 +99,11 @@ function M.add(note)
   })
   -- Attach an extmark to the just-added stop so future edits track its position.
   anchor.attach(0, M.data.stops)
-  -- Render the note as a virt_line above the stop's row.
+  -- Refresh notes across ALL buffers with stops, not just current. The new
+  -- stop changes #stops, which means every other file's virt_lines now have
+  -- a stale (idx/total) prefix and need to be re-rendered.
   local notes = require "codetour.notes"
-  notes.refresh(0, M.data.stops, M.data.path_name)
+  notes.refresh_all(M.data.stops, M.data.path_name)
   save()
   vim.notify(
     string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum),

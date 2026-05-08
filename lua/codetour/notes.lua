@@ -65,6 +65,7 @@ end
 ---@param stops CodeTour.Stop[]
 ---@param path_name string? Active path name; used for the {name} placeholder in note_prefix
 function M.refresh(bufnr, stops, path_name)
+  bufnr = require("codetour.util").actual_bufnr(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end

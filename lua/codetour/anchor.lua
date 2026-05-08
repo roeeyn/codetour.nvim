@@ -62,6 +62,7 @@ end
 ---@param bufnr integer
 ---@param stops CodeTour.Stop[]
 function M.attach(bufnr, stops)
+  bufnr = require("codetour.util").actual_bufnr(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -125,6 +126,7 @@ end
 ---@param idx integer
 ---@return integer? row 0-indexed
 function M.row_of(bufnr, idx)
+  bufnr = require("codetour.util").actual_bufnr(bufnr)
   local marks = M._buf_extmarks[bufnr]
   if marks == nil then
     return nil
@@ -143,6 +145,7 @@ end
 ---Drop the extmarks for one buffer (used when the buffer is being unloaded).
 ---@param bufnr integer
 function M.detach(bufnr)
+  bufnr = require("codetour.util").actual_bufnr(bufnr)
   if M._buf_extmarks[bufnr] then
     if vim.api.nvim_buf_is_valid(bufnr) then
       pcall(vim.api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)

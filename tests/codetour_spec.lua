@@ -528,6 +528,51 @@ describe("codetour.state", function()
     assert.equals(2, #marks, "expected exactly 2 note extmarks (one per stop), not duplicates from stale state")
   end)
 
+  it("adding a stop in another file refreshes totals across all files with stops", function()
+    local fileA = vim.fn.tempname() .. "_a.lua"
+    local fileB = vim.fn.tempname() .. "_b.lua"
+    vim.fn.writefile({ "a1", "a2", "a3" }, fileA)
+    vim.fn.writefile({ "b1", "b2", "b3" }, fileB)
+
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.anchor"] = nil
+    state = require "codetour.state"
+    require("codetour.config").merge { note_prefix = "({idx}/{total}) " }
+
+    -- Two stops in file A
+    vim.cmd("e " .. vim.fn.fnameescape(fileA))
+    local bufA = vim.api.nvim_get_current_buf()
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "second"
+
+    -- One stop in file B (split so file A stays loaded)
+    vim.cmd("split " .. vim.fn.fnameescape(fileB))
+    local bufB = vim.api.nvim_get_current_buf()
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "in B"
+
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+
+    -- File A's virt_lines should now show (1/3) and (2/3), not the stale (1/2) and (2/2).
+    local marksA = vim.api.nvim_buf_get_extmarks(bufA, NS, 0, -1, { details = true })
+    assert.equals(2, #marksA, "fileA should still have 2 virt_lines")
+    local textsA = {}
+    for _, m in ipairs(marksA) do
+      table.insert(textsA, m[4].virt_lines[1][1][1])
+    end
+    table.sort(textsA)
+    assert.is_truthy(textsA[1]:match "%(1/3%)", "expected (1/3) in fileA, got: " .. textsA[1])
+    assert.is_truthy(textsA[2]:match "%(2/3%)", "expected (2/3) in fileA, got: " .. textsA[2])
+
+    -- File B should have exactly 1 virt_line, with no leakage from other files.
+    local marksB = vim.api.nvim_buf_get_extmarks(bufB, NS, 0, -1, { details = true })
+    assert.equals(1, #marksB, "fileB should have exactly 1 virt_line, no leakage")
+    assert.is_truthy(marksB[1][4].virt_lines[1][1][1]:match "%(3/3%) in B")
+  end)
+
   it("does not duplicate virt_lines when stops are added incrementally", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "line 1", "line 2", "line 3", "line 4", "line 5" }, tmp)

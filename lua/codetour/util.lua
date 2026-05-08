@@ -30,4 +30,17 @@ function M.canonical(path)
   return vim.fn.resolve(vim.fn.fnamemodify(path, ":p"))
 end
 
+---Resolve nvim's "current buffer" sentinel `0` to the actual buffer number.
+---Critical when using bufnr as a key in module-local tables: `0` is "current
+---buffer" to nvim APIs but a literal `0` as a Lua table key, so without
+---resolution multiple buffers' state ends up colliding under one key.
+---@param bufnr integer
+---@return integer
+function M.actual_bufnr(bufnr)
+  if bufnr == 0 then
+    return vim.api.nvim_get_current_buf()
+  end
+  return bufnr
+end
+
 return M
