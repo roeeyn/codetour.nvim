@@ -160,7 +160,10 @@ See **TODOS** below for what's next.
 make test    # run plenary specs (~70)
 make fmt     # format with stylua
 make check   # stylua --check (used by CI)
+make hooks   # install local pre-commit hook (one-shot)
 ```
+
+**Pre-commit hook.** `make hooks` symlinks `.github/pre-commit` to `.git/hooks/pre-commit`. The hook runs `make check` + `make test` whenever any `.lua` file is staged; doc-only commits skip it. Bypass with `git commit --no-verify` if you really need to.
 
 ## Inspirations
 
@@ -175,6 +178,7 @@ make check   # stylua --check (used by CI)
 - gitgutter-style sign-column markers for stop lines (like arrow.nvim)
 - keyboard shortcut to jump between stops in the same file (like git hunks)
 - edit-in-buffer like oil for bulk edit / reorder / remove
-- lualine integration showing active tour name + stop count
 - native Telescope extension (`:Telescope codetour stops`) with split-pane
     - preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline)
+- lualine integration showing active tour name + stop count
+    - we may skip this as we may rely on the qf UI
