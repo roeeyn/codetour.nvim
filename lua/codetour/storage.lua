@@ -15,18 +15,41 @@ local function warn_no_repo_once()
   require("codetour.log").warn "codetour: not inside a git repo — stops won't persist across sessions"
 end
 
+---Resolve the configured tour directory.
+---Relative `storage_path` joins to the git root (returns nil if not in a repo).
+---Absolute `storage_path` is used as-is (allows tours outside any repo).
+---@param info CodeTour.GitInfo? May be nil when not in a git repo
+---@return string?
 local function tour_dir(info)
-  return info.root .. "/.git/info/codetour"
+  local config = require "codetour.config"
+  local sub = config.opts.storage_path or ".codetour"
+
+  if sub:sub(1, 1) == "/" or sub:sub(1, 1) == "~" then
+    return vim.fn.expand(sub)
+  end
+
+  if info == nil then
+    return nil -- relative path requires a git root
+  end
+  return info.root .. "/" .. sub
 end
 
 local function tour_file(info, name)
+  local dir = tour_dir(info)
+  if dir == nil then
+    return nil
+  end
   -- Sanitize: replace path-unsafe chars with `_`
   local safe = name:gsub("[/\\:]", "_")
-  return tour_dir(info) .. "/" .. safe .. ".json"
+  return dir .. "/" .. safe .. ".json"
 end
 
 local function active_file_path(info)
-  return tour_dir(info) .. "/" .. ACTIVE_FILE
+  local dir = tour_dir(info)
+  if dir == nil then
+    return nil
+  end
+  return dir .. "/" .. ACTIVE_FILE
 end
 
 local function to_relative(file, root)
@@ -68,11 +91,8 @@ end
 ---@return string[]
 function M.list_tours()
   local info = git.info()
-  if info == nil then
-    return {}
-  end
   local dir = tour_dir(info)
-  if vim.fn.isdirectory(dir) == 0 then
+  if dir == nil or vim.fn.isdirectory(dir) == 0 then
     return {}
   end
   local out = {}
@@ -94,10 +114,10 @@ function M.load(name)
     return nil
   end
   local info = git.info()
-  if info == nil then
-    return nil
-  end
   local file = tour_file(info, name)
+  if file == nil then
+    return nil -- relative storage_path + no git repo
+  end
   local content = read_file(file)
   if content == nil then
     return nil
@@ -110,9 +130,10 @@ function M.load(name)
   end
 
   local restored = {}
+  local root = info and info.root or nil
   for _, s in ipairs(decoded.stops or {}) do
     table.insert(restored, {
-      file = to_absolute(s.file, info.root),
+      file = to_absolute(s.file, root),
       lnum = s.lnum,
       col = s.col,
       note = s.note or "",
@@ -131,15 +152,20 @@ function M.save(name, stops)
     return
   end
   local info = git.info()
-  if info == nil then
+  local file = tour_file(info, name)
+  if file == nil then
     warn_no_repo_once()
-    return -- not in a repo; persistence disabled
+    return -- relative storage_path + no git repo; persistence disabled
   end
 
+  -- Stop file paths still relativize against git root when one exists, so
+  -- that tours remain portable across clones. Without a git root they stay
+  -- absolute (the to_relative helper handles a nil root by passthrough).
+  local root = info and info.root or nil
   local stops_rel = {}
   for _, s in ipairs(stops) do
     table.insert(stops_rel, {
-      file = to_relative(s.file, info.root),
+      file = to_relative(s.file, root),
       lnum = s.lnum,
       col = s.col,
       note = s.note,
@@ -153,7 +179,6 @@ function M.save(name, stops)
     stops = stops_rel,
   }
 
-  local file = tour_file(info, name)
   local encoded = vim.fn.json_encode(payload)
   if not write_file(file, encoded) then
     require("codetour.log").error("codetour: failed to write " .. file)
@@ -168,10 +193,10 @@ function M.delete(name)
     return false
   end
   local info = git.info()
-  if info == nil then
+  local file = tour_file(info, name)
+  if file == nil then
     return false
   end
-  local file = tour_file(info, name)
   return vim.fn.delete(file) == 0
 end
 
@@ -179,10 +204,11 @@ end
 ---@return string?
 function M.read_active()
   local info = git.info()
-  if info == nil then
+  local file = active_file_path(info)
+  if file == nil then
     return nil
   end
-  local content = read_file(active_file_path(info))
+  local content = read_file(file)
   if content == nil then
     return nil
   end
@@ -197,10 +223,10 @@ end
 ---@param name string?
 function M.write_active(name)
   local info = git.info()
-  if info == nil then
+  local file = active_file_path(info)
+  if file == nil then
     return
   end
-  local file = active_file_path(info)
   if name == nil or name == "" then
     vim.fn.delete(file)
     return

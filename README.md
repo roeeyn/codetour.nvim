@@ -98,6 +98,15 @@ require("codetour").setup({
   -- Show informational notifications ("stop added", "tour created", etc.).
   -- Warnings and errors are always shown. Default false (quiet mode).
   debug = false,
+
+  -- Where tour files live. Relative paths join to the git root; absolute
+  -- paths are used as-is. Default ".codetour" (visible at repo root,
+  -- easily committed and shared with teammates).
+  --
+  -- Common alternatives:
+  --   storage_path = ".git/info/codetour"  -- hidden, never committed
+  --   storage_path = "~/.local/share/codetour/myproject"  -- outside repo
+  storage_path = ".codetour",
 })
 ```
 
@@ -133,7 +142,9 @@ require("codetour").setup({
 
 ## How it works
 
-**Storage layout.** Each tour is its own JSON file at `<repo>/.git/info/codetour/<name>.json`. A small `_active_tour.txt` pointer remembers the last-active tour across sessions. `.git/info/` is auto-ignored by every git client, so the files are invisible to `git status` and never committed. Per-tour files mean atomic per-tour writes, easy export (`cp auth.json /tmp/share`), and no concurrent-write hazard across worktrees.
+**Storage layout.** Each tour is its own JSON file at `<repo>/.codetour/<name>.json` (configurable via `storage_path`). A small `_active_tour.txt` pointer remembers the last-active tour across sessions. The default location is visible at repo root so tours are easy to commit, share with teammates, and read from external tools (e.g. a future CLI). Per-tour files mean atomic per-tour writes, easy export (`cp auth.json /tmp/share`), and no concurrent-write hazard across worktrees.
+
+If you'd rather keep tours private to your clone, set `storage_path = ".git/info/codetour"` — the legacy hidden location, auto-gitignored by every git client.
 
 **Stop file paths.** Stored relative to the git root, so a fresh clone in a different directory still resolves them correctly. Stops in files outside the git root keep their absolute paths.
 

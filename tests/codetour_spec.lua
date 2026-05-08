@@ -27,24 +27,23 @@ describe("codetour.git", function()
     assert.is_nil(git.info())
   end)
 
-  it("returns root/branch/file inside a repo on main", function()
+  it("returns root and branch inside a repo on main", function()
     local d = tmpdir()
     init_git_repo(d)
     vim.cmd("cd " .. vim.fn.fnameescape(d))
     local info = git.info()
     assert.is_not_nil(info)
     assert.equals("main", info.branch)
-    assert.is_truthy(info.file:match "/%.git/info/codetour/main%.json$")
+    assert.is_not_nil(info.root)
   end)
 
-  it("replaces / with _ in branch names for the file path", function()
+  it("preserves branch names with / verbatim (sanitization happens at the storage layer)", function()
     local d = tmpdir()
     init_git_repo(d)
     vim.cmd("cd " .. vim.fn.fnameescape(d))
     vim.fn.system { "git", "-C", d, "checkout", "-q", "-b", "feature/foo" }
     local info = git.info()
     assert.equals("feature/foo", info.branch)
-    assert.is_truthy(info.file:match "/feature_foo%.json$")
   end)
 end)
 
@@ -87,7 +86,7 @@ describe("codetour.storage", function()
     storage.save("auth", stops)
 
     -- On-disk uses relative paths
-    local on_disk = info.root .. "/.git/info/codetour/auth.json"
+    local on_disk = info.root .. "/.codetour/auth.json"
     local f = io.open(on_disk, "r")
     local raw = f:read "*a"
     f:close()
@@ -105,7 +104,7 @@ describe("codetour.storage", function()
 
   it("returns nil on malformed JSON", function()
     local info = git.info()
-    local file = info.root .. "/.git/info/codetour/auth.json"
+    local file = info.root .. "/.codetour/auth.json"
     vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
     local f = io.open(file, "w")
     f:write "garbage{{{"
@@ -126,6 +125,27 @@ describe("codetour.storage", function()
     assert.is_not_nil(storage.load "doomed")
     assert.is_true(storage.delete "doomed")
     assert.is_nil(storage.load "doomed")
+  end)
+
+  it("respects setup{ storage_path } as a relative path inside the git root", function()
+    require("codetour.config").merge { storage_path = "my-tours" }
+    storage.save("scratch", {})
+    local info = require("codetour.git").info()
+    assert.equals(1, vim.fn.filereadable(info.root .. "/my-tours/scratch.json"))
+    -- Reset for subsequent tests
+    require("codetour.config").merge { storage_path = ".codetour" }
+  end)
+
+  it("respects setup{ storage_path } as an absolute path (works without a git repo)", function()
+    local outside = vim.fn.tempname() .. "_tours"
+    require("codetour.config").merge { storage_path = outside }
+    -- cd to a non-repo dir to confirm we don't need git here
+    vim.cmd("cd " .. vim.fn.fnameescape "/tmp")
+    storage.save("scratch", {})
+    assert.equals(1, vim.fn.filereadable(outside .. "/scratch.json"))
+    -- Reset
+    require("codetour.config").merge { storage_path = ".codetour" }
+    vim.cmd("cd " .. vim.fn.fnameescape(repo))
   end)
 
   it("list_tours sorts and excludes the _active_tour pointer", function()
