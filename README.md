@@ -160,10 +160,30 @@ See **TODOS** below for what's next.
 make test    # run plenary specs (~70)
 make fmt     # format with stylua
 make check   # stylua --check (used by CI)
-make hooks   # install local pre-commit hook (one-shot)
 ```
 
-**Pre-commit hook.** `make hooks` symlinks `.github/pre-commit` to `.git/hooks/pre-commit`. The hook runs `make check` + `make test` whenever any `.lua` file is staged; doc-only commits skip it. Bypass with `git commit --no-verify` if you really need to.
+### Pre-commit hooks
+
+This repo uses the [`pre-commit` framework](https://pre-commit.com). Install it once (e.g. `brew install pre-commit` or `pip install pre-commit`), then:
+
+```sh
+pre-commit install              # one-shot per clone — installs the git hook
+pre-commit run --all-files      # validate everything on demand
+pre-commit autoupdate           # refresh hook versions periodically
+```
+
+The configured hooks (`.pre-commit-config.yaml`):
+
+| Hook | What it does |
+|---|---|
+| `trailing-whitespace` | Strips trailing whitespace |
+| `end-of-file-fixer` | Ensures final newline |
+| `check-merge-conflict` | Catches stray `<<<<<<<` markers |
+| `check-yaml` | Validates YAML files |
+| `stylua-system` | `stylua --check` against staged `.lua` files |
+| `plenary-tests` | Runs `make test` when any `.lua` file is staged |
+
+Bypass with `git commit --no-verify` when you really need to.
 
 ## Inspirations
 

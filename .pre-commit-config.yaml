@@ -1,0 +1,26 @@
+# Run `pre-commit install` once per clone to enable the hook.
+# Run `pre-commit run --all-files` to validate everything on demand.
+# Run `pre-commit autoupdate` periodically to refresh the pinned revs below.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+
+  - repo: https://github.com/JohnnyMorganz/StyLua
+    rev: v2.4.1
+    hooks:
+      - id: stylua-system
+        files: \.lua$
+
+  - repo: local
+    hooks:
+      - id: plenary-tests
+        name: plenary specs (make test)
+        entry: make test
+        language: system
+        pass_filenames: false
+        files: \.lua$
