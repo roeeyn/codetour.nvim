@@ -47,9 +47,17 @@ local function set_virt_lines(bufnr, idx, total, row, note, tour_name)
 
   M._buf_marks[bufnr] = M._buf_marks[bufnr] or {}
   local existing = M._buf_marks[bufnr][idx]
+
+  -- virt_lines_above = true at row 0 silently fails to render: nvim has no
+  -- display row "above line 1" to draw into. For that one edge case fall
+  -- back to rendering BELOW the line so the note remains visible. Visually
+  -- inconsistent for line-1 stops only; alternative (sign / virt_text /
+  -- nothing at all) would be more disruptive.
+  local virt_lines_above = row > 0
+
   local opts = {
     virt_lines = virt_lines,
-    virt_lines_above = true,
+    virt_lines_above = virt_lines_above,
   }
   if existing then
     opts.id = existing

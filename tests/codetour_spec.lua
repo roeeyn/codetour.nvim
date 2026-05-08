@@ -362,6 +362,36 @@ describe("codetour.notes", function()
     assert.is_not_nil(notes._buf_marks[bufnr][1])
   end)
 
+  it("renders notes for line-1 stops below the line (workaround for nvim limitation)", function()
+    -- virt_lines_above = true at row 0 silently fails to render (nvim has no
+    -- display row above line 1). Our fallback flips to virt_lines_above = false
+    -- when row == 0 so the note stays visible.
+    local bufnr, file = buffer_with_lines { "first line", "second line", "third line" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "stop on line 1", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops, "default")
+
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.equals(1, #marks)
+    assert.equals(0, marks[1][2], "extmark should be at row 0")
+    assert.is_false(
+      marks[1][4].virt_lines_above,
+      "virt_lines_above should be false for row 0 so the note actually renders"
+    )
+  end)
+
+  it("renders notes above the line for any row > 0", function()
+    local bufnr, file = buffer_with_lines { "first line", "second line", "third line" }
+    local stops = { { file = file, lnum = 2, col = 0, note = "stop on line 2", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops, "default")
+
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.is_true(marks[1][4].virt_lines_above, "row > 0 should still render above")
+  end)
+
   it("detach_all() clears every tracked note extmark", function()
     local bufnr, file = buffer_with_lines { "line 1" }
     local stops = { { file = file, lnum = 1, col = 0, note = "hello", context = "" } }
