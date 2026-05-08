@@ -21,7 +21,7 @@ function M.setup(opts)
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       anchor.attach(bufnr, state.data.stops)
-      notes.refresh(bufnr, state.data.stops)
+      notes.refresh(bufnr, state.data.stops, state.data.path_name)
     end
   end
 end
@@ -51,7 +51,7 @@ end
 
 function M.toggle_notes()
   local notes = require "codetour.notes"
-  local visible = notes.toggle(state.data.stops)
+  local visible = notes.toggle(state.data.stops, state.data.path_name)
   vim.notify("codetour: notes " .. (visible and "shown" or "hidden"), vim.log.levels.INFO)
 end
 

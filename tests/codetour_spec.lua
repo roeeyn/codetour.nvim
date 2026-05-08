@@ -352,20 +352,50 @@ describe("codetour.notes", function()
       { file = file, lnum = 3, col = 0, note = "the nested call", context = "" },
     }
     anchor.attach(bufnr, stops)
-    notes.refresh(bufnr, stops)
+    -- Disable prefix for this test so we can assert the indent cleanly
+    require("codetour.config").merge { note_prefix = "" }
+    notes.refresh(bufnr, stops, "default")
 
-    -- Read the extmarks back and verify their virt_lines start with the right indent
     local NS = vim.api.nvim_create_namespace "codetour_notes"
     local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
-    -- marks order may not match stop order; index by row
     local virt_at = {}
     for _, m in ipairs(marks) do
       virt_at[m[2]] = m[4].virt_lines
     end
-    -- Stop on row 1 (line 2, 4-space indent)
     assert.equals("    the local", virt_at[1][1][1][1])
-    -- Stop on row 2 (line 3, 8-space indent)
     assert.equals("        the nested call", virt_at[2][1][1][1])
+  end)
+
+  it("refresh() applies the configured prefix template with placeholders", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2" }
+    local stops = {
+      { file = file, lnum = 1, col = 0, note = "first", context = "" },
+      { file = file, lnum = 2, col = 0, note = "second", context = "" },
+    }
+    anchor.attach(bufnr, stops)
+    require("codetour.config").merge { note_prefix = "{name} ({idx}/{total}): " }
+    notes.refresh(bufnr, stops, "billing")
+
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    local virt_at = {}
+    for _, m in ipairs(marks) do
+      virt_at[m[2]] = m[4].virt_lines
+    end
+    assert.equals("billing (1/2): first", virt_at[0][1][1][1])
+    assert.equals("billing (2/2): second", virt_at[1][1][1][1])
+  end)
+
+  it("refresh() leaves unknown placeholders intact (typo visibility)", function()
+    local bufnr, file = buffer_with_lines { "line 1" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "hi", context = "" } }
+    anchor.attach(bufnr, stops)
+    require("codetour.config").merge { note_prefix = "{nme}: " } -- typo: {nme} not {name}
+    notes.refresh(bufnr, stops, "default")
+
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.equals("{nme}: hi", marks[1][4].virt_lines[1][1][1])
   end)
 end)
 

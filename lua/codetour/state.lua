@@ -83,7 +83,7 @@ function M.add(note)
   anchor.attach(0, M.data.stops)
   -- Render the note as a virt_line above the stop's row.
   local notes = require "codetour.notes"
-  notes.refresh(0, M.data.stops)
+  notes.refresh(0, M.data.stops, M.data.path_name)
   save()
   vim.notify(
     string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum),
@@ -135,7 +135,7 @@ function M.edit_note(text)
 
   M.data.stops[idx].note = text
   local notes = require "codetour.notes"
-  notes.refresh(0, M.data.stops)
+  notes.refresh(0, M.data.stops, M.data.path_name)
   -- Sync the quickfix list so an open tour qf reflects the new note text
   -- without requiring the user to re-run :TourOpen.
   local qf = require "codetour.qf"

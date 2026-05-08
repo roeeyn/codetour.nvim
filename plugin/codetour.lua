@@ -23,7 +23,7 @@ vim.api.nvim_create_autocmd("BufRead", {
     local anchor = require "codetour.anchor"
     anchor.attach(args.buf, state.data.stops)
     local notes = require "codetour.notes"
-    notes.refresh(args.buf, state.data.stops)
+    notes.refresh(args.buf, state.data.stops, state.data.path_name)
   end,
 })
 
