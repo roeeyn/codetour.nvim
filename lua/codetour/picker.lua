@@ -1,3 +1,4 @@
+local log = require "codetour.log"
 local M = {}
 
 ---Open a picker over the active tour's stops. Default action: jump to that stop.
@@ -8,12 +9,12 @@ function M.stops()
   state.ensure_loaded()
 
   if state.data.active_tour == nil then
-    vim.notify("codetour: no active tour. Use :TourCreate or :TourSelect first.", vim.log.levels.WARN)
+    log.warn "codetour: no active tour. Use :TourCreate or :TourSelect first."
     return
   end
 
   if #state.data.stops == 0 then
-    vim.notify(string.format("codetour: tour '%s' has no stops yet", state.data.active_tour), vim.log.levels.WARN)
+    log.warn(string.format("codetour: tour '%s' has no stops yet", state.data.active_tour))
     return
   end
 
@@ -43,7 +44,7 @@ function M.stops()
     end
     -- Verify the file still exists; otherwise notify rather than fail loudly.
     if vim.fn.filereadable(entry.stop.file) == 0 then
-      vim.notify(string.format("codetour: file no longer exists: %s", entry.stop.file), vim.log.levels.WARN)
+      log.warn(string.format("codetour: file no longer exists: %s", entry.stop.file))
       return
     end
     vim.cmd("edit " .. vim.fn.fnameescape(entry.stop.file))
@@ -59,7 +60,7 @@ function M.tours()
 
   local tours = state.tours_with_meta()
   if #tours == 0 then
-    vim.notify("codetour: no tours yet. Use :TourCreate <name> to create one.", vim.log.levels.WARN)
+    log.warn "codetour: no tours yet. Use :TourCreate <name> to create one."
     return
   end
 

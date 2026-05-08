@@ -12,7 +12,7 @@ local function warn_no_repo_once()
     return
   end
   _warned_no_repo = true
-  vim.notify("codetour: not inside a git repo — stops won't persist across sessions", vim.log.levels.WARN)
+  require("codetour.log").warn "codetour: not inside a git repo — stops won't persist across sessions"
 end
 
 local function tour_dir(info)
@@ -105,7 +105,7 @@ function M.load(name)
 
   local ok, decoded = pcall(vim.fn.json_decode, content)
   if not ok or type(decoded) ~= "table" then
-    vim.notify("codetour: failed to parse " .. file, vim.log.levels.WARN)
+    require("codetour.log").warn("codetour: failed to parse " .. file)
     return nil
   end
 
@@ -156,7 +156,7 @@ function M.save(name, stops)
   local file = tour_file(info, name)
   local encoded = vim.fn.json_encode(payload)
   if not write_file(file, encoded) then
-    vim.notify("codetour: failed to write " .. file, vim.log.levels.ERROR)
+    require("codetour.log").error("codetour: failed to write " .. file)
   end
 end
 

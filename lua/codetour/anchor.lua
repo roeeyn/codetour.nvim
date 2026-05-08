@@ -85,9 +85,8 @@ function M.attach(bufnr, stops)
       if drifted then
         stop.lnum = row + 1
         stop.col = 0 -- column meaning is unclear after drift; reset to start of line
-        vim.notify(
-          string.format("codetour: stop #%d drifted from line %d to %d", idx, original_lnum, stop.lnum),
-          vim.log.levels.INFO
+        require("codetour.log").warn(
+          string.format("codetour: stop #%d drifted from line %d to %d", idx, original_lnum, stop.lnum)
         )
       end
     end

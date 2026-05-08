@@ -1,4 +1,5 @@
 local storage = require "codetour.storage"
+local log = require "codetour.log"
 local M = {}
 
 ---@class CodeTour.Stop
@@ -45,10 +46,7 @@ function M.ensure_loaded()
 
   local loaded = storage.load(active)
   if loaded == nil then
-    vim.notify(
-      string.format("codetour: active tour '%s' couldn't be loaded; clearing active pointer", active),
-      vim.log.levels.WARN
-    )
+    log.warn(string.format("codetour: active tour '%s' couldn't be loaded; clearing active pointer", active))
     storage.write_active(nil)
     return
   end
@@ -59,7 +57,7 @@ end
 
 local function require_active()
   if M.data.active_tour == nil then
-    vim.notify("codetour: no active tour. Use :TourCreate <name> or :TourSelect <name> first.", vim.log.levels.WARN)
+    log.warn "codetour: no active tour. Use :TourCreate <name> or :TourSelect <name> first."
     return false
   end
   return true
@@ -94,27 +92,21 @@ end
 ---@param name string?
 function M.create(name)
   if name == nil or name == "" then
-    vim.notify("codetour: usage: :TourCreate <name>", vim.log.levels.WARN)
+    log.warn "codetour: usage: :TourCreate <name>"
     return
   end
   -- Refuse path-unsafe characters at create time rather than silently
   -- sanitizing them, which could collide on disk (e.g. "auth/v2" and
   -- "auth_v2" would both become auth_v2.json).
   if name:match "[/\\:]" then
-    vim.notify(
-      string.format("codetour: tour name '%s' contains invalid characters (/ \\ :)", name),
-      vim.log.levels.WARN
-    )
+    log.warn(string.format("codetour: tour name '%s' contains invalid characters (/ \\ :)", name))
     return
   end
   M.ensure_loaded()
 
   for _, existing in ipairs(storage.list_tours()) do
     if existing == name then
-      vim.notify(
-        string.format("codetour: tour '%s' already exists; use :TourSelect to switch", name),
-        vim.log.levels.WARN
-      )
+      log.warn(string.format("codetour: tour '%s' already exists; use :TourSelect to switch", name))
       return
     end
   end
@@ -129,21 +121,21 @@ function M.create(name)
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.stops)
 
-  vim.notify(string.format("codetour: created tour '%s'", name), vim.log.levels.INFO)
+  log.info(string.format("codetour: created tour '%s'", name))
 end
 
 ---Switch to an existing tour. No-op with a warning if `name` doesn't exist.
 ---@param name string?
 function M.select(name)
   if name == nil or name == "" then
-    vim.notify("codetour: usage: :TourSelect <name>", vim.log.levels.WARN)
+    log.warn "codetour: usage: :TourSelect <name>"
     return
   end
   M.ensure_loaded()
 
   local loaded = storage.load(name)
   if loaded == nil then
-    vim.notify(string.format("codetour: tour '%s' not found", name), vim.log.levels.WARN)
+    log.warn(string.format("codetour: tour '%s' not found", name))
     return
   end
 
@@ -153,7 +145,7 @@ function M.select(name)
   storage.write_active(name)
   rehydrate_all_buffers()
 
-  vim.notify(string.format("codetour: selected tour '%s' (%d stops)", name, #M.data.stops), vim.log.levels.INFO)
+  log.info(string.format("codetour: selected tour '%s' (%d stops)", name, #M.data.stops))
 end
 
 ---Delete a tour by name. Confirms first. If the deleted tour is the active
@@ -161,7 +153,7 @@ end
 ---@param name string?
 function M.delete(name)
   if name == nil or name == "" then
-    vim.notify("codetour: usage: :TourDelete <name>", vim.log.levels.WARN)
+    log.warn "codetour: usage: :TourDelete <name>"
     return
   end
   M.ensure_loaded()
@@ -174,7 +166,7 @@ function M.delete(name)
     end
   end
   if not exists then
-    vim.notify(string.format("codetour: tour '%s' not found", name), vim.log.levels.WARN)
+    log.warn(string.format("codetour: tour '%s' not found", name))
     return
   end
 
@@ -191,9 +183,9 @@ function M.delete(name)
   end
 
   if storage.delete(name) then
-    vim.notify(string.format("codetour: deleted tour '%s'", name), vim.log.levels.INFO)
+    log.info(string.format("codetour: deleted tour '%s'", name))
   else
-    vim.notify(string.format("codetour: failed to delete tour '%s'", name), vim.log.levels.ERROR)
+    log.error(string.format("codetour: failed to delete tour '%s'", name))
   end
 end
 
@@ -203,7 +195,7 @@ end
 function M.add(note)
   local file = vim.api.nvim_buf_get_name(0)
   if file == "" then
-    vim.notify("codetour: current buffer has no file", vim.log.levels.WARN)
+    log.warn "codetour: current buffer has no file"
     return
   end
   M.ensure_loaded()
@@ -228,10 +220,7 @@ function M.add(note)
   local target_file = util.canonical(file)
   for _, existing in ipairs(M.data.stops) do
     if util.canonical(existing.file) == target_file and existing.lnum == lnum then
-      vim.notify(
-        string.format("codetour: a stop already exists at %s:%d", vim.fn.fnamemodify(file, ":t"), lnum),
-        vim.log.levels.WARN
-      )
+      log.warn(string.format("codetour: a stop already exists at %s:%d", vim.fn.fnamemodify(file, ":t"), lnum))
       return
     end
   end
@@ -251,10 +240,7 @@ function M.add(note)
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.stops)
   save()
-  vim.notify(
-    string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum),
-    vim.log.levels.INFO
-  )
+  log.info(string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum))
 end
 
 ---Find the index of the stop in `stops` nearest the cursor in the current buffer.
@@ -285,7 +271,7 @@ end
 ---@param text string
 function M.edit_note(text)
   if text == nil or text == "" then
-    vim.notify("codetour: usage: :TourNoteEdit <new text>", vim.log.levels.WARN)
+    log.warn "codetour: usage: :TourNoteEdit <new text>"
     return
   end
   M.ensure_loaded()
@@ -295,7 +281,7 @@ function M.edit_note(text)
 
   local idx = nearest_stop_idx_in_buf(M.data.stops)
   if idx == nil then
-    vim.notify("codetour: no stop in current buffer", vim.log.levels.WARN)
+    log.warn "codetour: no stop in current buffer"
     return
   end
 
@@ -305,7 +291,7 @@ function M.edit_note(text)
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.stops)
   save()
-  vim.notify(string.format("codetour: stop #%d note updated", idx), vim.log.levels.INFO)
+  log.info(string.format("codetour: stop #%d note updated", idx))
 end
 
 ---Remove the stop nearest the cursor. Re-keys extmarks across all loaded
@@ -318,7 +304,7 @@ function M.remove()
 
   local idx = nearest_stop_idx_in_buf(M.data.stops)
   if idx == nil then
-    vim.notify("codetour: no stop in current buffer", vim.log.levels.WARN)
+    log.warn "codetour: no stop in current buffer"
     return
   end
 
@@ -344,10 +330,7 @@ function M.remove()
   qf.update_if_tour_active(M.data.stops)
 
   save()
-  vim.notify(
-    string.format("codetour: stop #%d removed (%s); %d stops remaining", idx, removed_label, #M.data.stops),
-    vim.log.levels.INFO
-  )
+  log.info(string.format("codetour: stop #%d removed (%s); %d stops remaining", idx, removed_label, #M.data.stops))
 end
 
 function M.dump()

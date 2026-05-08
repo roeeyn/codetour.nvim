@@ -120,8 +120,9 @@ end
 
 function M.toggle_notes()
   local notes = require "codetour.notes"
+  local log = require "codetour.log"
   local visible = notes.toggle(state.data.stops, state.data.active_tour)
-  vim.notify("codetour: notes " .. (visible and "shown" or "hidden"), vim.log.levels.INFO)
+  log.info("codetour: notes " .. (visible and "shown" or "hidden"))
 end
 
 function M.open()

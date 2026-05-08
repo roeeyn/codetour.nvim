@@ -94,6 +94,10 @@ require("codetour").setup({
 
   -- Register `<leader>t*` keymaps automatically (default: false).
   default_keymaps = false,
+
+  -- Show informational notifications ("stop added", "tour created", etc.).
+  -- Warnings and errors are always shown. Default false (quiet mode).
+  debug = false,
 })
 ```
 

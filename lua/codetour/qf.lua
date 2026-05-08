@@ -19,7 +19,7 @@ end
 function M.open()
   state.ensure_loaded()
   if #state.data.stops == 0 then
-    vim.notify("codetour: no stops to open", vim.log.levels.WARN)
+    require("codetour.log").warn "codetour: no stops to open"
     return
   end
 
