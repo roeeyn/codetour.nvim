@@ -101,9 +101,11 @@ make check   # stylua --check (used by CI)
 ## TODOS
 
 - configurable set path instead of git/config
-- named tours, and multiple per repo and branch
-    - I think this is the `TourStart` command, if so, rename it to TourCreate
 - edit in buffer like oil
 - Add gitgutter symbol for the codetour line (like arrow)
 - Add lualine plugin to show the codetour name we're on, and maybe the number of steps
 - Keyboard shortcut to jump between stops in the same file, like hunks
+- Native Telescope extension (`:Telescope codetour stops`) with split-pane preview
+  and custom mappings (`<C-d>` to delete from picker, `<C-e>` to edit note inline).
+  Until then, `vim.ui.select` is used; users can opt into Telescope rendering by
+  installing [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim).
