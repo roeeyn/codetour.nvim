@@ -106,3 +106,4 @@ make check   # stylua --check (used by CI)
 - edit in buffer like oil
 - Add gitgutter symbol for the codetour line (like arrow)
 - Add lualine plugin to show the codetour name we're on, and maybe the number of steps
+- Keyboard shortcut to jump between stops in the same file, like hunks

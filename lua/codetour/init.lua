@@ -8,14 +8,20 @@ local M = {}
 function M.setup(opts)
   config.merge(opts)
 
+  -- Re-apply the highlight link in case the user changed `note_highlight`. The
+  -- plugin/ shim already set a default at startup; this lets setup() override it.
+  vim.api.nvim_set_hl(0, "CodetourNote", { link = config.opts.note_highlight, default = true })
+
   -- Cover the case where this plugin loads after some buffers were already read
   -- (e.g. lazy.nvim's default deferred loading): walk the loaded buffers and
-  -- attach extmarks for any matching stops.
+  -- attach extmarks (and notes) for any matching stops.
   local anchor = require "codetour.anchor"
+  local notes = require "codetour.notes"
   state.ensure_loaded()
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       anchor.attach(bufnr, state.data.stops)
+      notes.refresh(bufnr, state.data.stops)
     end
   end
 end

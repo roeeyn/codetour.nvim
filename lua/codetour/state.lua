@@ -136,6 +136,10 @@ function M.edit_note(text)
   M.data.stops[idx].note = text
   local notes = require "codetour.notes"
   notes.refresh(0, M.data.stops)
+  -- Sync the quickfix list so an open tour qf reflects the new note text
+  -- without requiring the user to re-run :TourOpen.
+  local qf = require "codetour.qf"
+  qf.update_if_tour_active(M.data.stops)
   save()
   vim.notify(string.format("codetour: stop #%d note updated", idx), vim.log.levels.INFO)
 end

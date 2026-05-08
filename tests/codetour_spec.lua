@@ -340,6 +340,33 @@ describe("codetour.notes", function()
     notes.detach_all()
     assert.is_nil(next(notes._buf_marks))
   end)
+
+  it("refresh() prepends the line's leading indent to the virt_lines text", function()
+    local bufnr, file = buffer_with_lines {
+      "function outer()",
+      "    local x = 1", -- 4-space indent
+      "        nested()", -- 8-space indent
+    }
+    local stops = {
+      { file = file, lnum = 2, col = 0, note = "the local", context = "" },
+      { file = file, lnum = 3, col = 0, note = "the nested call", context = "" },
+    }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops)
+
+    -- Read the extmarks back and verify their virt_lines start with the right indent
+    local NS = vim.api.nvim_create_namespace "codetour_notes"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    -- marks order may not match stop order; index by row
+    local virt_at = {}
+    for _, m in ipairs(marks) do
+      virt_at[m[2]] = m[4].virt_lines
+    end
+    -- Stop on row 1 (line 2, 4-space indent)
+    assert.equals("    the local", virt_at[1][1][1][1])
+    -- Stop on row 2 (line 3, 8-space indent)
+    assert.equals("        the nested call", virt_at[2][1][1][1])
+  end)
 end)
 
 describe("codetour.state", function()
@@ -416,5 +443,48 @@ describe("codetour.state", function()
     state.data.loaded = true
     state.edit_note "rewritten"
     assert.equals("old", state.data.stops[1].note)
+  end)
+
+  it("edit_note() refreshes the quickfix list when a tour is active", function()
+    -- Build a real file and a real stop, prime an active tour qf
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1", "line 2" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+    state.data.stops = { { file = tmp, lnum = 1, col = 0, note = "before", context = "" } }
+    state.data.loaded = true
+
+    -- Simulate :TourOpen by populating a tour-titled qf list
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = { { filename = tmp, lnum = 1, col = 1, text = "before" } },
+    })
+
+    state.edit_note "after"
+
+    local items = vim.fn.getqflist()
+    assert.equals("after", items[1].text)
+  end)
+
+  it("edit_note() leaves a non-tour quickfix list alone", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+    state.data.stops = { { file = tmp, lnum = 1, col = 0, note = "old", context = "" } }
+    state.data.loaded = true
+
+    -- Pretend the user has a :grep result up
+    vim.fn.setqflist({}, " ", {
+      title = "[grep] foo",
+      items = { { filename = tmp, lnum = 1, col = 1, text = "grep hit" } },
+    })
+
+    state.edit_note "new note"
+
+    local items = vim.fn.getqflist()
+    assert.equals("grep hit", items[1].text) -- untouched
   end)
 end)

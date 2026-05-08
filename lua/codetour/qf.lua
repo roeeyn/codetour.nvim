@@ -53,6 +53,32 @@ function M.open()
   vim.cmd "cwindow"
 end
 
+---If a tour quickfix list is currently active (title starts with "tour:"),
+---rebuild its items from `stops` so edits like :TourNoteEdit are reflected
+---in the qf view immediately. No-op if the user is on some other qf list.
+---@param stops CodeTour.Stop[]
+function M.update_if_tour_active(stops)
+  local current = vim.fn.getqflist { title = 1, idx = 1 }
+  local title = (current and current.title) or ""
+  if not title:match "^tour:" then
+    return
+  end
+
+  local items = {}
+  for _, stop in ipairs(stops) do
+    table.insert(items, {
+      filename = stop.file,
+      lnum = stop.lnum,
+      col = stop.col + 1,
+      text = stop.note ~= "" and stop.note or "(no note)",
+    })
+  end
+
+  -- 'r' replaces the current list in place (no new entry on the qf stack).
+  -- Preserve idx so the user's qf cursor doesn't snap back to the start.
+  vim.fn.setqflist({}, "r", { items = items, title = title, idx = current.idx })
+end
+
 function M.close()
   if qf_backup == nil then
     vim.fn.setqflist({}, "r", { items = {}, title = "" })

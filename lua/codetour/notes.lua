@@ -12,7 +12,11 @@ M._visible = true
 local function set_virt_lines(bufnr, idx, row, note)
   local virt_lines = nil
   if note ~= nil and note ~= "" then
-    virt_lines = { { { note, "CodetourNote" } } }
+    -- Indent the note to match the line below so deeply-indented stops
+    -- don't have their notes orphaned at column 0.
+    local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+    local indent = line:match "^(%s*)" or ""
+    virt_lines = { { { indent .. note, "CodetourNote" } } }
   end
 
   M._buf_marks[bufnr] = M._buf_marks[bufnr] or {}

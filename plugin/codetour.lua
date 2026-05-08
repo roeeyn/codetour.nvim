@@ -8,7 +8,9 @@ local codetour_group = vim.api.nvim_create_augroup("codetour", { clear = true })
 -- Define our highlight group with `default = true` so user :hi overrides win.
 -- Re-set on ColorScheme so a `:colorscheme ...` that calls `:hi clear` doesn't wipe us.
 local function set_default_hl()
-  vim.api.nvim_set_hl(0, "CodetourNote", { link = "Comment", default = true })
+  local ok, config = pcall(require, "codetour.config")
+  local link = ok and config.opts.note_highlight or "DiagnosticInfo"
+  vim.api.nvim_set_hl(0, "CodetourNote", { link = link, default = true })
 end
 set_default_hl()
 vim.api.nvim_create_autocmd("ColorScheme", { group = codetour_group, callback = set_default_hl })
@@ -55,6 +57,6 @@ vim.api.nvim_create_user_command("TourNoteEdit", function(args)
   require("codetour").edit_note(args.args)
 end, { nargs = "*", desc = "codetour: replace the nearest stop's note with the given text" })
 
-vim.api.nvim_create_user_command("TourNotesToggle", function()
+vim.api.nvim_create_user_command("TourNotesVirtualTextToggle", function()
   require("codetour").toggle_notes()
-end, { desc = "codetour: show/hide all stop notes" })
+end, { desc = "codetour: show/hide the virtual-text rendering of stop notes" })

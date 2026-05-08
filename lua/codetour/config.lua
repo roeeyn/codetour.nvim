@@ -3,11 +3,13 @@ local M = {}
 ---@class CodeTour.Opts
 ---@field default_keymaps boolean Register default <leader>t* keymaps (default: false)
 ---@field close_qf_on_tour_close boolean Run :cclose in :TourClose (default: false)
+---@field note_highlight string Highlight group to link CodetourNote to (default: "DiagnosticInfo")
 
 ---@type CodeTour.Opts
 M.defaults = {
   default_keymaps = false,
   close_qf_on_tour_close = false, -- if true, :TourClose runs :cclose; otherwise leaves the qf window alone
+  note_highlight = "DiagnosticInfo", -- distinct from Comment so notes don't blend in
 }
 
 ---@type CodeTour.Opts
