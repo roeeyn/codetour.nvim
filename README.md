@@ -168,10 +168,12 @@ make check   # stylua --check (used by CI)
 
 ## TODOS
 
+- For all the prints, evaluate if they need to be enabled by a debug config, or if they are strictly relevant
+    - add a debug config
 - configurable storage path (alternative to `.git/info/`)
-- edit-in-buffer like oil for bulk edit / reorder / remove
 - gitgutter-style sign-column markers for stop lines (like arrow.nvim)
-- lualine integration showing active tour name + stop count
 - keyboard shortcut to jump between stops in the same file (like git hunks)
+- edit-in-buffer like oil for bulk edit / reorder / remove
+- lualine integration showing active tour name + stop count
 - native Telescope extension (`:Telescope codetour stops`) with split-pane
-  preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline)
+    - preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline)
