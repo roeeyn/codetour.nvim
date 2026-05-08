@@ -4,6 +4,42 @@ local qf = require "codetour.qf"
 
 local M = {}
 
+local function set_default_keymaps()
+  local map = function(lhs, rhs, desc)
+    vim.keymap.set("n", lhs, rhs, { desc = desc, silent = true })
+  end
+  map("<leader>ta", function()
+    require("codetour").add()
+  end, "codetour: add stop at cursor")
+  map("<leader>te", function()
+    vim.ui.input({ prompt = "New note: " }, function(text)
+      if text and text ~= "" then
+        require("codetour").edit_note(text)
+      end
+    end)
+  end, "codetour: edit nearest stop's note")
+  map("<leader>tx", function()
+    require("codetour").remove()
+  end, "codetour: remove nearest stop")
+  map("<leader>tn", "<cmd>cnext<cr>", "codetour: next stop (qf)")
+  map("<leader>tp", "<cmd>cprev<cr>", "codetour: prev stop (qf)")
+  map("<leader>to", function()
+    require("codetour").open()
+  end, "codetour: populate quickfix with active tour")
+  map("<leader>tc", function()
+    require("codetour").close()
+  end, "codetour: restore prior quickfix")
+  map("<leader>tl", function()
+    require("codetour").list()
+  end, "codetour: stop picker (active tour)")
+  map("<leader>ts", function()
+    require("codetour").pick_tour()
+  end, "codetour: tour picker")
+  map("<leader>tv", function()
+    require("codetour").toggle_notes()
+  end, "codetour: toggle virt_lines notes")
+end
+
 ---@param opts CodeTour.Opts? User-supplied overrides; merged on top of defaults
 function M.setup(opts)
   config.merge(opts)
@@ -11,6 +47,10 @@ function M.setup(opts)
   -- Re-apply the highlight link in case the user changed `note_highlight`. The
   -- plugin/ shim already set a default at startup; this lets setup() override it.
   vim.api.nvim_set_hl(0, "CodetourNote", { link = config.opts.note_highlight, default = true })
+
+  if config.opts.default_keymaps then
+    set_default_keymaps()
+  end
 
   -- Cover the case where this plugin loads after some buffers were already read
   -- (e.g. lazy.nvim's default deferred loading): walk loaded buffers and attach

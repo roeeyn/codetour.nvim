@@ -89,11 +89,22 @@ local function rehydrate_all_buffers()
   qf.update_if_tour_active(M.data.stops)
 end
 
----Create a new empty tour and make it active. Refuses if name already exists.
+---Create a new empty tour and make it active. Refuses if name already exists
+---or contains characters that would conflict with the on-disk filename.
 ---@param name string?
 function M.create(name)
   if name == nil or name == "" then
     vim.notify("codetour: usage: :TourCreate <name>", vim.log.levels.WARN)
+    return
+  end
+  -- Refuse path-unsafe characters at create time rather than silently
+  -- sanitizing them, which could collide on disk (e.g. "auth/v2" and
+  -- "auth_v2" would both become auth_v2.json).
+  if name:match "[/\\:]" then
+    vim.notify(
+      string.format("codetour: tour name '%s' contains invalid characters (/ \\ :)", name),
+      vim.log.levels.WARN
+    )
     return
   end
   M.ensure_loaded()

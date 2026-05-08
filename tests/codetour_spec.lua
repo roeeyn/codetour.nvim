@@ -609,6 +609,16 @@ describe("codetour.state", function()
     assert.same({ "auth" }, tours)
   end)
 
+  it("create() refuses tour names with path-unsafe characters", function()
+    state.create "auth/v2"
+    assert.is_nil(state.data.active_tour, "should not create tour with /")
+    assert.equals(0, #storage.list_tours())
+    state.create "auth\\v2"
+    assert.is_nil(state.data.active_tour)
+    state.create "auth:v2"
+    assert.is_nil(state.data.active_tour)
+  end)
+
   it("create() refuses to create a tour with an existing name", function()
     state.create "auth"
     state.data.active_tour = nil -- pretend nothing's active

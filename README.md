@@ -1,6 +1,6 @@
 # codetour.nvim
 
-> An ordered, annotated trail through a codebase. A guided tour you can replay forward and backward with `:cnext` / `:cprev`.
+> An ordered, annotated trail through a codebase. A guided tour you can replay forward and backward with `:cnext` / `:cprev`, with named tours per repo, virtual-text notes that follow the code, and per-stop persistence in `.git/info/`.
 
 ## Why
 
@@ -8,14 +8,18 @@ Existing Neovim plugins solve "remember a few important files" — harpoon, arro
 
 codetour.nvim fills a different gap: **codebase exploration**. The cognitive task of building a mental map of how a system fits together is *sequential* — first this entry, then this dispatch, then this handler. That's a path, not a set. Each stop deserves a note explaining *why this stop matters*.
 
-The closest sibling is VS Code's [CodeTour](https://github.com/microsoft/codetour) by Microsoft. This is the Neovim version of that idea, with native quickfix navigation and per-branch git-tracked persistence.
+The closest sibling is VS Code's [CodeTour](https://github.com/microsoft/codetour) by Microsoft. This is the Neovim version of that idea, with native quickfix navigation, per-tour storage, and live virtual-text annotations.
 
 ## Features
 
-- Ordered sequence of stops, traversed with the quickfix list
-- A free-text note per stop
-- Per-branch persistence in `.git/info/codetour/<branch>.json` (auto-gitignored, per-clone)
-- Saves and restores your prior quickfix list across `:TourOpen` / `:TourClose`
+- **Ordered sequence of stops** traversed with the quickfix list (`:cnext` / `:cprev`)
+- **A free-text note per stop** rendered as a virtual line *above* the line, with a configurable scannable prefix (e.g. `default (2/5): the dispatch handler`)
+- **Multiple named tours per repo** — `:TourCreate auth-flow`, `:TourCreate billing-flow`, switch between them
+- **Per-tour persistence** in `<repo>/.git/info/codetour/<name>.json` (auto-gitignored, per-clone)
+- **Stops follow code edits** via extmarks, with cold-load re-anchoring via context-string match if files changed while nvim was closed
+- **Saves and restores your prior quickfix list** across `:TourOpen` / `:TourClose`
+- **Cross-buffer total updates** — adding a stop in one file refreshes the `(idx/total)` prefix in every other file
+- **Telescope-friendly** picker via `vim.ui.select` (works with `telescope-ui-select.nvim`, `dressing.nvim`, etc.)
 
 ## Requirements
 
@@ -40,7 +44,7 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```vim
 :e some-file.lua
 " cursor on the entry-point line
-:TourAdd entry point
+:TourAdd entry point         " auto-creates a "default" tour on first add
 
 :e other-file.lua
 " cursor on the dispatch handler
@@ -51,45 +55,109 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 :TourClose       " restore your prior quickfix list
 ```
 
-Quit Neovim and reopen — the path is still there.
+Quit Neovim and reopen — the tour is still there.
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `:TourStart [name]` | Begin a new path on the current branch (clears any existing one) |
-| `:TourAdd [note...]` | Add the cursor's line as a stop with optional note |
-| `:TourOpen` | Populate the quickfix list with the current path, jump to stop 1 |
+| **Tour management** | |
+| `:TourCreate <name>` | Create a new empty tour and make it active |
+| `:TourSelect [name]` | Switch the active tour (no arg → opens a picker) |
+| `:TourDelete [name]` | Delete a tour (with confirm) |
+| **Stops** | |
+| `:TourAdd [note...]` | Add a stop at the cursor with optional inline note |
+| `:TourRemove` | Remove the stop nearest the cursor in the current buffer |
+| `:TourNoteEdit <text>` | Replace the nearest stop's note with the given text |
+| **Navigation** | |
+| `:TourOpen` | Populate the quickfix list with the active tour, jump to stop 1 |
 | `:TourClose` | Restore the quickfix list that was active before `:TourOpen` |
+| `:TourList` | Open a picker over the active tour's stops; `<CR>` jumps |
+| **Display** | |
+| `:TourNotesVirtualTextToggle` | Hide / show all virtual-text notes |
 | `:TourDump` | Print the in-memory state to `:messages` (debug aid) |
 
 ## Configuration
 
 ```lua
 require("codetour").setup({
-  -- If true, :TourClose runs :cclose. Default leaves the qf window state alone.
+  -- :TourClose runs :cclose. Default leaves the qf window state alone.
   close_qf_on_tour_close = false,
+
+  -- Highlight group that CodetourNote links to. Override with any group name,
+  -- or set your own `:hi CodetourNote ...` to bypass the link entirely.
+  note_highlight = "DiagnosticInfo",
+
+  -- Template prefixed to each rendered note. Placeholders: {name}, {idx}, {total}.
+  -- Set to "" to disable. Unknown placeholders pass through untouched.
+  note_prefix = "{name} ({idx}/{total}): ",
+
+  -- Register `<leader>t*` keymaps automatically (default: false).
+  default_keymaps = false,
 })
 ```
 
+### Default keymaps (when `default_keymaps = true`)
+
+| Key | Action |
+|---|---|
+| `<leader>ta` | `:TourAdd` (no note) |
+| `<leader>te` | edit nearest note (prompt) |
+| `<leader>tx` | `:TourRemove` |
+| `<leader>tn` | `:cnext` |
+| `<leader>tp` | `:cprev` |
+| `<leader>to` | `:TourOpen` |
+| `<leader>tc` | `:TourClose` |
+| `<leader>tl` | `:TourList` (stop picker) |
+| `<leader>ts` | `:TourSelect` (tour picker) |
+| `<leader>tv` | toggle virtual-text notes |
+
+### Telescope-rendered pickers
+
+`:TourList` and `:TourSelect` use `vim.ui.select`. To render them in Telescope, install [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim):
+
+```lua
+{
+  "nvim-telescope/telescope-ui-select.nvim",
+  config = function()
+    require("telescope").load_extension("ui-select")
+  end,
+}
+```
+
+`dressing.nvim` and `noice.nvim` both work too. A native Telescope extension with split-pane preview is on the TODOs.
+
 ## How it works
 
-State for each branch lives in `<repo>/.git/info/codetour/<branch>.json`. `.git/info/` is auto-ignored by every git client, so the file is invisible to `git status` and never committed. Branch names with `/` are written with `_` in the filename.
+**Storage layout.** Each tour is its own JSON file at `<repo>/.git/info/codetour/<name>.json`. A small `_active_tour.txt` pointer remembers the last-active tour across sessions. `.git/info/` is auto-ignored by every git client, so the files are invisible to `git status` and never committed. Per-tour files mean atomic per-tour writes, easy export (`cp auth.json /tmp/share`), and no concurrent-write hazard across worktrees.
 
-Stop file paths are stored relative to the git root, so a fresh clone in a different directory still resolves them correctly. Stops in files outside the git root keep their absolute paths.
+**Stop file paths.** Stored relative to the git root, so a fresh clone in a different directory still resolves them correctly. Stops in files outside the git root keep their absolute paths.
 
-Branch switches mid-session do not yet auto-reload — restart Neovim to pick up a different branch's path. (Auto-load on `BufEnter` is on the roadmap.)
+**Live position tracking.** Stops are anchored via extmarks during a session, so inserting or deleting lines above a stop shifts it correctly. Quickfix navigation reads the live position before jumping.
+
+**Cold-load re-anchoring.** Each stop also persists a 60-char context snippet of its line. On reopen, if a file changed while nvim was closed, the plugin searches ±20 lines for the snippet and re-anchors there, notifying you that the stop drifted.
+
+**Multi-tour.** Each `:TourCreate <name>` makes a new file. `:TourSelect <name>` switches active. The active tour is what `:TourAdd`, `:TourOpen`, `:TourList`, etc. operate on.
 
 ## Status
 
-Active development. Implemented through Phase 3: scaffold, in-memory stops, quickfix integration, JSON persistence.
+Active development through Phases 0–10:
 
-Coming: extmark anchoring (stops follow inserted/deleted lines), context-string re-anchor on cold load, `virt_lines` notes above each stop, `:TourEdit`, `:TourRemove`, branch-aware auto-load on `BufEnter`, `:TourList` Telescope picker.
+- ✅ Plugin scaffold, in-memory stops, quickfix integration
+- ✅ Per-tour JSON persistence in `.git/info/codetour/`
+- ✅ Extmark-based anchoring + context-string re-anchor
+- ✅ `virt_lines` notes with configurable prefix and highlight
+- ✅ Stop dedupe, overwrite confirms, qf cursor preservation
+- ✅ Multi-tour support (replaced the original branch-awareness)
+- ✅ `:TourList` / `:TourSelect` pickers via `vim.ui.select`
+- ✅ Default keymaps, edge case audit
+
+See **TODOS** below for what's next.
 
 ## Development
 
 ```sh
-make test    # run plenary specs
+make test    # run plenary specs (~70)
 make fmt     # format with stylua
 make check   # stylua --check (used by CI)
 ```
@@ -100,12 +168,10 @@ make check   # stylua --check (used by CI)
 
 ## TODOS
 
-- configurable set path instead of git/config
-- edit in buffer like oil
-- Add gitgutter symbol for the codetour line (like arrow)
-- Add lualine plugin to show the codetour name we're on, and maybe the number of steps
-- Keyboard shortcut to jump between stops in the same file, like hunks
-- Native Telescope extension (`:Telescope codetour stops`) with split-pane preview
-  and custom mappings (`<C-d>` to delete from picker, `<C-e>` to edit note inline).
-  Until then, `vim.ui.select` is used; users can opt into Telescope rendering by
-  installing [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim).
+- configurable storage path (alternative to `.git/info/`)
+- edit-in-buffer like oil for bulk edit / reorder / remove
+- gitgutter-style sign-column markers for stop lines (like arrow.nvim)
+- lualine integration showing active tour name + stop count
+- keyboard shortcut to jump between stops in the same file (like git hunks)
+- native Telescope extension (`:Telescope codetour stops`) with split-pane
+  preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline)

@@ -4,6 +4,17 @@ local M = {}
 local STORAGE_VERSION = 2
 local ACTIVE_FILE = "_active_tour.txt"
 
+-- Latched so the "not in a git repo" warning fires only once per session
+-- rather than on every mutation attempt. Reset across nvim sessions.
+local _warned_no_repo = false
+local function warn_no_repo_once()
+  if _warned_no_repo then
+    return
+  end
+  _warned_no_repo = true
+  vim.notify("codetour: not inside a git repo — stops won't persist across sessions", vim.log.levels.WARN)
+end
+
 local function tour_dir(info)
   return info.root .. "/.git/info/codetour"
 end
@@ -121,7 +132,8 @@ function M.save(name, stops)
   end
   local info = git.info()
   if info == nil then
-    return -- not in a repo; persistence disabled silently
+    warn_no_repo_once()
+    return -- not in a repo; persistence disabled
   end
 
   local stops_rel = {}
