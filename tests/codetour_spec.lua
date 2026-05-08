@@ -551,6 +551,106 @@ describe("codetour.state", function()
     assert.equals(2, #marks, "after second :TourAdd, expected exactly 2 note extmarks (no duplicates)")
   end)
 
+  it("add() refuses to create a duplicate stop at the same (file, lnum)", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1", "line 2", "line 3" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+    state.add "first"
+    assert.equals(1, #state.data.stops)
+    -- Same line, different note text → should still refuse
+    state.add "second attempt"
+    assert.equals(1, #state.data.stops, "duplicate at same lnum should be refused")
+    assert.equals("first", state.data.stops[1].note)
+  end)
+
+  it("add() allows same lnum across different files", function()
+    local tmp1 = vim.fn.tempname() .. ".lua"
+    local tmp2 = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1", "line 2" }, tmp1)
+    vim.fn.writefile({ "line 1", "line 2" }, tmp2)
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.cmd("e " .. vim.fn.fnameescape(tmp1))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "in tmp1"
+
+    vim.cmd("e " .. vim.fn.fnameescape(tmp2))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "in tmp2"
+
+    assert.equals(2, #state.data.stops, "same lnum in different files should both be added")
+  end)
+
+  it("remove() drops the nearest stop and shifts remaining indices", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d", "e" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "third"
+    vim.api.nvim_win_set_cursor(0, { 5, 0 })
+    state.add "fifth"
+    assert.equals(3, #state.data.stops)
+
+    -- Cursor near the middle stop
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.remove()
+    assert.equals(2, #state.data.stops)
+    assert.equals("first", state.data.stops[1].note)
+    assert.equals("fifth", state.data.stops[2].note) -- index shifted down
+  end)
+
+  it("remove() bails when no stop is in the current buffer", function()
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+    vim.cmd "enew"
+    state.data.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "x", context = "" } }
+    state.data.loaded = true
+    state.remove()
+    assert.equals(1, #state.data.stops, "no removal should occur")
+  end)
+
+  it("remove() updates the quickfix list when a tour is active", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "second"
+
+    -- Simulate :TourOpen
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = {
+        { filename = tmp, lnum = 1, col = 1, text = "first" },
+        { filename = tmp, lnum = 2, col = 1, text = "second" },
+      },
+    })
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.remove() -- removes "first"
+
+    local items = vim.fn.getqflist()
+    assert.equals(1, #items)
+    assert.equals("second", items[1].text)
+  end)
+
   it("edit_note() leaves a non-tour quickfix list alone", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "line 1" }, tmp)

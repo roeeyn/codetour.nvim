@@ -60,3 +60,7 @@ end, { nargs = "*", desc = "codetour: replace the nearest stop's note with the g
 vim.api.nvim_create_user_command("TourNotesVirtualTextToggle", function()
   require("codetour").toggle_notes()
 end, { desc = "codetour: show/hide the virtual-text rendering of stop notes" })
+
+vim.api.nvim_create_user_command("TourRemove", function()
+  require("codetour").remove()
+end, { desc = "codetour: remove the nearest stop in the current buffer" })

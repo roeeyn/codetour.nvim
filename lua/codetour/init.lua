@@ -32,12 +32,27 @@ end
 
 ---@param name string? Optional path name; defaults to "default"
 function M.start(name)
+  state.ensure_loaded()
+  if #state.data.stops > 0 then
+    local current = state.data.path_name or "default"
+    local prompt = string.format("codetour: overwrite path '%s' (%d stops)?", current, #state.data.stops)
+    -- 3rd arg `2` defaults the prompt to "No" so an accidental <Enter> bails.
+    local choice = vim.fn.confirm(prompt, "&Yes\n&No", 2)
+    if choice ~= 1 then
+      vim.notify("codetour: :TourStart cancelled", vim.log.levels.INFO)
+      return
+    end
+  end
   state.start(name)
 end
 
 ---@param note string? Optional note describing why this stop matters
 function M.add(note)
   state.add(note)
+end
+
+function M.remove()
+  state.remove()
 end
 
 function M.dump()

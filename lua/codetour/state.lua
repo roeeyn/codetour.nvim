@@ -64,13 +64,32 @@ function M.add(note)
     return
   end
   M.ensure_loaded()
+
+  -- Refresh first so the dedupe check below uses *current* extmark positions
+  -- rather than possibly-stale stored lnums (e.g. after editing in this session).
+  local anchor = require "codetour.anchor"
+  anchor.refresh(M.data.stops)
+
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local lnum, col = cursor[1], cursor[2]
+
+  -- Idempotent dedupe: refuse to create two stops at the same (file, lnum).
+  local util = require "codetour.util"
+  local target_file = util.canonical(file)
+  for _, existing in ipairs(M.data.stops) do
+    if util.canonical(existing.file) == target_file and existing.lnum == lnum then
+      vim.notify(
+        string.format("codetour: a stop already exists at %s:%d", vim.fn.fnamemodify(file, ":t"), lnum),
+        vim.log.levels.WARN
+      )
+      return
+    end
+  end
+
   if M.data.path_name == nil then
     M.data.path_name = "default"
   end
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  local lnum, col = cursor[1], cursor[2]
   local line = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum, false)[1] or ""
-  local util = require "codetour.util"
   table.insert(M.data.stops, {
     file = file,
     lnum = lnum,
@@ -79,7 +98,6 @@ function M.add(note)
     context = util.trim_context(line),
   })
   -- Attach an extmark to the just-added stop so future edits track its position.
-  local anchor = require "codetour.anchor"
   anchor.attach(0, M.data.stops)
   -- Render the note as a virt_line above the stop's row.
   local notes = require "codetour.notes"
@@ -147,6 +165,48 @@ end
 function M.dump()
   M.ensure_loaded()
   print(vim.inspect(M.data))
+end
+
+---Remove the stop nearest the cursor in the current buffer.
+---After removal, all subsequent stops' indices shift down by one, so we drop
+---and re-attach all extmarks so the index→extmark_id maps stay correct.
+function M.remove()
+  M.ensure_loaded()
+  local idx = nearest_stop_idx_in_buf(M.data.stops)
+  if idx == nil then
+    vim.notify("codetour: no stop in current buffer", vim.log.levels.WARN)
+    return
+  end
+
+  -- Refresh positions so the persisted state captures the latest line numbers
+  -- of stops we're keeping.
+  local anchor = require "codetour.anchor"
+  anchor.refresh(M.data.stops)
+
+  local removed = M.data.stops[idx]
+  local removed_label = string.format("%s:%d", vim.fn.fnamemodify(removed.file, ":t"), removed.lnum)
+  table.remove(M.data.stops, idx)
+
+  -- Indices shifted; rebuild extmark/note tracking from scratch across all
+  -- loaded buffers that hold stops.
+  local notes = require "codetour.notes"
+  anchor.detach_all()
+  notes.detach_all()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      anchor.attach(bufnr, M.data.stops)
+      notes.refresh(bufnr, M.data.stops, M.data.path_name)
+    end
+  end
+
+  local qf = require "codetour.qf"
+  qf.update_if_tour_active(M.data.stops)
+
+  save()
+  vim.notify(
+    string.format("codetour: stop #%d removed (%s); %d stops remaining", idx, removed_label, #M.data.stops),
+    vim.log.levels.INFO
+  )
 end
 
 return M
