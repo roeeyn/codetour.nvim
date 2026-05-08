@@ -1,8 +1,12 @@
 local M = {}
 
--- Returns { root, branch, file } if cwd is inside a git repo, otherwise nil.
--- `branch` is "no-branch" for detached HEAD; `file` is the absolute path
--- to this branch's persistence file (with `/` replaced by `_` in the name).
+---@class CodeTour.GitInfo
+---@field root string Absolute path to the git working tree root
+---@field branch string Branch name; "no-branch" for detached HEAD
+---@field file string Absolute path to <root>/.git/info/codetour/<branch>.json (slashes in the branch are replaced with `_`)
+
+---Probes git for repo info. Cheap (two `vim.fn.system` calls); callers can invoke per-command.
+---@return CodeTour.GitInfo? info nil if cwd is not inside a git repo
 function M.info()
   local root = vim.fn.system "git rev-parse --show-toplevel 2>/dev/null"
   root = (root or ""):gsub("%s+$", "")

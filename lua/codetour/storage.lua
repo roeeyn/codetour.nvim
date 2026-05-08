@@ -38,6 +38,8 @@ local function write_file(path, content)
   return true
 end
 
+---@param path_name string? Active path's name; defaults to "default" if nil
+---@param stops CodeTour.Stop[] Stops to persist (file paths converted to git-root-relative)
 function M.save(path_name, stops)
   local info = git.info()
   if info == nil then
@@ -68,6 +70,7 @@ function M.save(path_name, stops)
   end
 end
 
+---@return { path_name: string, stops: CodeTour.Stop[] }? loaded nil if no file, parse error, or no active path entry
 function M.load()
   local info = git.info()
   if info == nil then

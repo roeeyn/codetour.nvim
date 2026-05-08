@@ -1,10 +1,22 @@
 local storage = require "codetour.storage"
 local M = {}
 
+---@class CodeTour.Stop
+---@field file string Absolute path to the file the stop lives in
+---@field lnum integer 1-indexed line number (matches nvim_win_get_cursor)
+---@field col integer 0-indexed byte column (matches nvim_win_get_cursor)
+---@field note string User's prose for this stop; empty string if no note was given
+
+---@class CodeTour.State
+---@field path_name string? Active path's name; nil before any :TourStart/:TourAdd
+---@field stops CodeTour.Stop[] Ordered list of stops in the active path
+---@field loaded boolean Whether ensure_loaded() has run for the current branch
+
+---@type CodeTour.State
 M.data = {
-  path_name = nil, -- string when a path is active, nil otherwise
-  stops = {}, -- list of { file, lnum, col, note }
-  loaded = false, -- whether we've attempted to load from disk
+  path_name = nil,
+  stops = {},
+  loaded = false,
 }
 
 local function save()
@@ -24,6 +36,7 @@ function M.ensure_loaded()
   end
 end
 
+---@param name string? Optional path name; defaults to "default"
 function M.start(name)
   M.data.path_name = name or "default"
   M.data.stops = {}
@@ -32,6 +45,7 @@ function M.start(name)
   vim.notify(string.format("codetour: started path '%s'", M.data.path_name), vim.log.levels.INFO)
 end
 
+---@param note string? Optional note describing why this stop matters
 function M.add(note)
   local file = vim.api.nvim_buf_get_name(0)
   if file == "" then
