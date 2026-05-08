@@ -52,6 +52,9 @@ function M.start(name)
   M.data.path_name = name or "default"
   M.data.stops = {}
   M.data.loaded = true -- explicitly initialized; no need to read from disk
+  -- Empty an active tour qf so it doesn't keep showing the old path's stops.
+  local qf = require "codetour.qf"
+  qf.update_if_tour_active(M.data.stops)
   save()
   vim.notify(string.format("codetour: started path '%s'", M.data.path_name), vim.log.levels.INFO)
 end
@@ -104,6 +107,9 @@ function M.add(note)
   -- a stale (idx/total) prefix and need to be re-rendered.
   local notes = require "codetour.notes"
   notes.refresh_all(M.data.stops, M.data.path_name)
+  -- Sync the quickfix list so an open :TourOpen view reflects the new stop.
+  local qf = require "codetour.qf"
+  qf.update_if_tour_active(M.data.stops)
   save()
   vim.notify(
     string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum),

@@ -666,6 +666,60 @@ describe("codetour.state", function()
     assert.equals(1, #state.data.stops, "no removal should occur")
   end)
 
+  it("add() updates the quickfix list when a tour is active", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "second"
+
+    -- Simulate :TourOpen
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = {
+        { filename = tmp, lnum = 1, col = 1, text = "first" },
+        { filename = tmp, lnum = 2, col = 1, text = "second" },
+      },
+    })
+
+    -- Add a third stop
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    state.add "third"
+
+    -- qf should now have 3 items, not 2
+    local items = vim.fn.getqflist()
+    assert.equals(3, #items)
+    assert.equals("third", items[3].text)
+  end)
+
+  it("start() empties the quickfix list when overwriting an active tour", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = { { filename = tmp, lnum = 1, col = 1, text = "first" } },
+    })
+
+    state.start "fresh" -- no confirm in pure state.start; init.start handles confirm
+
+    local items = vim.fn.getqflist()
+    assert.equals(0, #items, "tour qf should be emptied after starting a new path")
+  end)
+
   it("remove() updates the quickfix list when a tour is active", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a", "b", "c" }, tmp)
