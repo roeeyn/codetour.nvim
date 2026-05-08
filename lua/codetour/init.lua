@@ -38,6 +38,17 @@ function M.dump()
   state.dump()
 end
 
+---@param text string New note text for the stop nearest the cursor
+function M.edit_note(text)
+  state.edit_note(text)
+end
+
+function M.toggle_notes()
+  local notes = require "codetour.notes"
+  local visible = notes.toggle(state.data.stops)
+  vim.notify("codetour: notes " .. (visible and "shown" or "hidden"), vim.log.levels.INFO)
+end
+
 function M.open()
   qf.open()
 end

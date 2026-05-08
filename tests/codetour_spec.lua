@@ -270,6 +270,78 @@ describe("codetour.anchor", function()
   end)
 end)
 
+describe("codetour.notes", function()
+  local notes
+  local anchor
+
+  before_each(function()
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.anchor"] = nil
+    notes = require "codetour.notes"
+    anchor = require "codetour.anchor"
+  end)
+  after_each(function()
+    notes.detach_all()
+    anchor.detach_all()
+  end)
+
+  local function buffer_with_lines(lines)
+    local tmp = vim.fn.tempname()
+    vim.fn.writefile(lines, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    return vim.api.nvim_get_current_buf(), tmp
+  end
+
+  it("refresh() registers a note extmark for stops with notes", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2", "line 3" }
+    local stops = { { file = file, lnum = 2, col = 0, note = "the dispatch fn", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops)
+    assert.is_not_nil(notes._buf_marks[bufnr])
+    assert.is_not_nil(notes._buf_marks[bufnr][1])
+  end)
+
+  it("refresh() does nothing when notes are toggled off", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "hello", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes._visible = false
+    notes.refresh(bufnr, stops)
+    assert.is_nil(notes._buf_marks[bufnr])
+  end)
+
+  it("toggle() flips visibility and clears note extmarks when hiding", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "hello", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops)
+    assert.is_not_nil(notes._buf_marks[bufnr][1])
+
+    local visible = notes.toggle(stops)
+    assert.is_false(visible)
+    assert.is_nil(next(notes._buf_marks))
+  end)
+
+  it("toggle() restores notes when re-shown", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "hello", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops)
+    notes.toggle(stops) -- now hidden
+    notes.toggle(stops) -- now shown again
+    assert.is_not_nil(notes._buf_marks[bufnr][1])
+  end)
+
+  it("detach_all() clears every tracked note extmark", function()
+    local bufnr, file = buffer_with_lines { "line 1" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "hello", context = "" } }
+    anchor.attach(bufnr, stops)
+    notes.refresh(bufnr, stops)
+    notes.detach_all()
+    assert.is_nil(next(notes._buf_marks))
+  end)
+end)
+
 describe("codetour.state", function()
   local state
   local original_cwd
@@ -308,5 +380,41 @@ describe("codetour.state", function()
     local fresh = require "codetour.state"
     fresh.ensure_loaded()
     assert.equals("billing", fresh.data.path_name)
+  end)
+
+  it("edit_note() rejects empty text", function()
+    state.data.stops = { { file = "/anything", lnum = 1, col = 0, note = "old", context = "" } }
+    state.edit_note ""
+    assert.equals("old", state.data.stops[1].note)
+    state.edit_note(nil)
+    assert.equals("old", state.data.stops[1].note)
+  end)
+
+  it("edit_note() updates the nearest stop's note in the current buffer", function()
+    -- Open a real file so the buffer's path matches the stop's file
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1", "line 2", "line 3" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+    state.data.stops = {
+      { file = tmp, lnum = 1, col = 0, note = "first", context = "" },
+      { file = tmp, lnum = 2, col = 0, note = "second", context = "" },
+      { file = tmp, lnum = 3, col = 0, note = "third", context = "" },
+    }
+    state.data.loaded = true
+
+    state.edit_note "rewritten"
+    assert.equals("rewritten", state.data.stops[2].note) -- nearest to cursor on line 2
+    assert.equals("first", state.data.stops[1].note) -- unchanged
+    assert.equals("third", state.data.stops[3].note) -- unchanged
+  end)
+
+  it("edit_note() bails when no stop is in the current buffer", function()
+    vim.cmd "enew"
+    state.data.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "old", context = "" } }
+    state.data.loaded = true
+    state.edit_note "rewritten"
+    assert.equals("old", state.data.stops[1].note)
   end)
 end)

@@ -8,15 +8,9 @@ local SEARCH_RADIUS = 20
 -- ever needs to read or write it.
 M._buf_extmarks = {}
 
-local function canonical(path)
-  if path == nil or path == "" then
-    return nil
-  end
-  return vim.fn.resolve(vim.fn.fnamemodify(path, ":p"))
-end
-
 local function buf_path(bufnr)
-  return canonical(vim.api.nvim_buf_get_name(bufnr))
+  local util = require "codetour.util"
+  return util.canonical(vim.api.nvim_buf_get_name(bufnr))
 end
 
 ---Find the row (0-indexed) where this stop should anchor.
@@ -80,7 +74,8 @@ function M.attach(bufnr, stops)
 
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   for idx, stop in ipairs(stops) do
-    if M._buf_extmarks[bufnr][idx] == nil and canonical(stop.file) == path then
+    local util = require "codetour.util"
+    if M._buf_extmarks[bufnr][idx] == nil and util.canonical(stop.file) == path then
       local original_lnum = stop.lnum or 1
       local row, drifted = find_anchor_row(bufnr, original_lnum, stop.context, line_count)
       local col = math.max(0, stop.col or 0)
@@ -121,6 +116,28 @@ function M.refresh(stops)
       end
     end
   end
+end
+
+---Returns the 0-indexed row where this stop's extmark currently lives, or nil
+---if the stop isn't tracked in this buffer (or the buffer is invalid).
+---Used by notes.lua to render virt_lines at the stop's live position.
+---@param bufnr integer
+---@param idx integer
+---@return integer? row 0-indexed
+function M.row_of(bufnr, idx)
+  local marks = M._buf_extmarks[bufnr]
+  if marks == nil then
+    return nil
+  end
+  local id = marks[idx]
+  if id == nil then
+    return nil
+  end
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return nil
+  end
+  local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, NAMESPACE, id, {})
+  return pos and pos[1] or nil
 end
 
 ---Drop the extmarks for one buffer (used when the buffer is being unloaded).

@@ -18,4 +18,16 @@ function M.trim_context(line)
   return trimmed
 end
 
+---Canonicalize a path: expand to absolute, follow symlinks.
+---Used for path equality across saved-file paths and live buffer paths
+---(e.g. macOS `/tmp` vs `/private/tmp`).
+---@param path string?
+---@return string?
+function M.canonical(path)
+  if path == nil or path == "" then
+    return nil
+  end
+  return vim.fn.resolve(vim.fn.fnamemodify(path, ":p"))
+end
+
 return M

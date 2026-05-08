@@ -5,6 +5,14 @@ vim.g.loaded_codetour = 1
 
 local codetour_group = vim.api.nvim_create_augroup("codetour", { clear = true })
 
+-- Define our highlight group with `default = true` so user :hi overrides win.
+-- Re-set on ColorScheme so a `:colorscheme ...` that calls `:hi clear` doesn't wipe us.
+local function set_default_hl()
+  vim.api.nvim_set_hl(0, "CodetourNote", { link = "Comment", default = true })
+end
+set_default_hl()
+vim.api.nvim_create_autocmd("ColorScheme", { group = codetour_group, callback = set_default_hl })
+
 vim.api.nvim_create_autocmd("BufRead", {
   group = codetour_group,
   callback = function(args)
@@ -12,6 +20,8 @@ vim.api.nvim_create_autocmd("BufRead", {
     state.ensure_loaded()
     local anchor = require "codetour.anchor"
     anchor.attach(args.buf, state.data.stops)
+    local notes = require "codetour.notes"
+    notes.refresh(args.buf, state.data.stops)
   end,
 })
 
@@ -40,3 +50,11 @@ end, { desc = "codetour: populate quickfix with current path; jump to stop 1" })
 vim.api.nvim_create_user_command("TourClose", function()
   require("codetour").close()
 end, { desc = "codetour: restore prior quickfix and close cwindow" })
+
+vim.api.nvim_create_user_command("TourNoteEdit", function(args)
+  require("codetour").edit_note(args.args)
+end, { nargs = "*", desc = "codetour: replace the nearest stop's note with the given text" })
+
+vim.api.nvim_create_user_command("TourNotesToggle", function()
+  require("codetour").toggle_notes()
+end, { desc = "codetour: show/hide all stop notes" })

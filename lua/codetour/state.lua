@@ -43,10 +43,12 @@ end
 
 ---@param name string? Optional path name; defaults to "default"
 function M.start(name)
-  -- Drop every extmark before clearing the stop list so the buffer
-  -- isn't left with orphan markers pointing at indexes that no longer exist.
+  -- Drop every extmark and note before clearing the stop list so buffers
+  -- aren't left with orphan markers pointing at indexes that no longer exist.
   local anchor = require "codetour.anchor"
+  local notes = require "codetour.notes"
   anchor.detach_all()
+  notes.detach_all()
   M.data.path_name = name or "default"
   M.data.stops = {}
   M.data.loaded = true -- explicitly initialized; no need to read from disk
@@ -79,11 +81,63 @@ function M.add(note)
   -- Attach an extmark to the just-added stop so future edits track its position.
   local anchor = require "codetour.anchor"
   anchor.attach(0, M.data.stops)
+  -- Render the note as a virt_line above the stop's row.
+  local notes = require "codetour.notes"
+  notes.refresh(0, M.data.stops)
   save()
   vim.notify(
     string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum),
     vim.log.levels.INFO
   )
+end
+
+---Find the index of the stop in `stops` nearest the cursor in the current buffer.
+---Same-line preferred (distance 0), then nearest by absolute line distance.
+---Only considers stops whose file matches the current buffer's path.
+---@param stops CodeTour.Stop[]
+---@return integer? idx 1-based index into `stops`, or nil if no match
+local function nearest_stop_idx_in_buf(stops)
+  local util = require "codetour.util"
+  local current_path = util.canonical(vim.api.nvim_buf_get_name(0))
+  if current_path == nil then
+    return nil
+  end
+  local cursor_lnum = vim.api.nvim_win_get_cursor(0)[1]
+  local best_idx, best_dist = nil, math.huge
+  for idx, stop in ipairs(stops) do
+    if util.canonical(stop.file) == current_path then
+      local dist = math.abs((stop.lnum or 1) - cursor_lnum)
+      if dist < best_dist then
+        best_idx = idx
+        best_dist = dist
+      end
+    end
+  end
+  return best_idx
+end
+
+---Replace the note of the stop nearest the cursor in the current buffer.
+---Empty `text` is rejected with a usage notify; we don't use it as a "clear" sentinel
+---because it's indistinguishable from a typo (no way to know intent).
+---@param text string New note text; empty/nil = error
+function M.edit_note(text)
+  if text == nil or text == "" then
+    vim.notify("codetour: usage: :TourNoteEdit <new text>", vim.log.levels.WARN)
+    return
+  end
+
+  M.ensure_loaded()
+  local idx = nearest_stop_idx_in_buf(M.data.stops)
+  if idx == nil then
+    vim.notify("codetour: no stop in current buffer", vim.log.levels.WARN)
+    return
+  end
+
+  M.data.stops[idx].note = text
+  local notes = require "codetour.notes"
+  notes.refresh(0, M.data.stops)
+  save()
+  vim.notify(string.format("codetour: stop #%d note updated", idx), vim.log.levels.INFO)
 end
 
 function M.dump()
