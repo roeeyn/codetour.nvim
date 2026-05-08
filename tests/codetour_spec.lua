@@ -107,6 +107,86 @@ describe("codetour.storage", function()
   end)
 end)
 
+describe("codetour.anchor", function()
+  local anchor
+
+  before_each(function()
+    package.loaded["codetour.anchor"] = nil
+    anchor = require "codetour.anchor"
+  end)
+  after_each(function()
+    anchor.detach_all()
+  end)
+
+  local function buffer_with_lines(lines)
+    local tmp = vim.fn.tempname()
+    vim.fn.writefile(lines, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    return vim.api.nvim_get_current_buf(), tmp
+  end
+
+  it("attach() sets an extmark for a stop matching the buffer", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2", "line 3", "line 4", "line 5" }
+    local stops = { { file = file, lnum = 3, col = 0, note = "" } }
+    anchor.attach(bufnr, stops)
+    assert.is_not_nil(anchor._buf_extmarks[bufnr])
+    assert.is_not_nil(anchor._buf_extmarks[bufnr][1])
+  end)
+
+  it("refresh() updates stop.lnum when lines are inserted above", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2", "line 3", "line 4", "line 5" }
+    local stops = { { file = file, lnum = 3, col = 0, note = "" } }
+    anchor.attach(bufnr, stops)
+
+    -- Insert 2 lines above the stop
+    vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "new1", "new2" })
+
+    anchor.refresh(stops)
+    assert.equals(5, stops[1].lnum) -- was 3, now 5 after 2 lines inserted above
+  end)
+
+  it("refresh() updates stop.lnum when lines are deleted above", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2", "line 3", "line 4", "line 5" }
+    local stops = { { file = file, lnum = 4, col = 0, note = "" } }
+    anchor.attach(bufnr, stops)
+
+    -- Delete the first line
+    vim.api.nvim_buf_set_lines(bufnr, 0, 1, false, {})
+
+    anchor.refresh(stops)
+    assert.equals(3, stops[1].lnum) -- was 4, now 3 after 1 line deleted above
+  end)
+
+  it("attach() skips stops that don't match the buffer's path", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2", "line 3" }
+    local stops = {
+      { file = file, lnum = 1, col = 0, note = "match" },
+      { file = "/some/other/file.lua", lnum = 1, col = 0, note = "no match" },
+    }
+    anchor.attach(bufnr, stops)
+    assert.is_not_nil(anchor._buf_extmarks[bufnr][1])
+    assert.is_nil(anchor._buf_extmarks[bufnr][2])
+  end)
+
+  it("attach() is idempotent (calling twice doesn't double-track)", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "" } }
+    anchor.attach(bufnr, stops)
+    local first_id = anchor._buf_extmarks[bufnr][1]
+    anchor.attach(bufnr, stops)
+    assert.equals(first_id, anchor._buf_extmarks[bufnr][1])
+  end)
+
+  it("detach_all() clears every tracked extmark", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "" } }
+    anchor.attach(bufnr, stops)
+    assert.is_not_nil(anchor._buf_extmarks[bufnr])
+    anchor.detach_all()
+    assert.is_nil(next(anchor._buf_extmarks))
+  end)
+end)
+
 describe("codetour.state", function()
   local state
   local original_cwd

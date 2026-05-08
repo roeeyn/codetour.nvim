@@ -3,6 +3,18 @@ if vim.g.loaded_codetour == 1 then
 end
 vim.g.loaded_codetour = 1
 
+local codetour_group = vim.api.nvim_create_augroup("codetour", { clear = true })
+
+vim.api.nvim_create_autocmd("BufRead", {
+  group = codetour_group,
+  callback = function(args)
+    local state = require "codetour.state"
+    state.ensure_loaded()
+    local anchor = require "codetour.anchor"
+    anchor.attach(args.buf, state.data.stops)
+  end,
+})
+
 vim.api.nvim_create_user_command("TourPing", function()
   require("codetour").ping()
 end, { desc = "codetour: smoke-test command" })

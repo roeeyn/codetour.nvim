@@ -7,6 +7,17 @@ local M = {}
 ---@param opts CodeTour.Opts? User-supplied overrides; merged on top of defaults
 function M.setup(opts)
   config.merge(opts)
+
+  -- Cover the case where this plugin loads after some buffers were already read
+  -- (e.g. lazy.nvim's default deferred loading): walk the loaded buffers and
+  -- attach extmarks for any matching stops.
+  local anchor = require "codetour.anchor"
+  state.ensure_loaded()
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      anchor.attach(bufnr, state.data.stops)
+    end
+  end
 end
 
 function M.ping()

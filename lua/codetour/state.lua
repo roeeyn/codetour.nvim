@@ -20,6 +20,10 @@ M.data = {
 }
 
 local function save()
+  -- Refresh stops' lnum/col from any live extmarks so the persisted positions
+  -- reflect any in-session shifts (lines inserted/deleted above the stop).
+  local anchor = require "codetour.anchor"
+  anchor.refresh(M.data.stops)
   storage.save(M.data.path_name, M.data.stops)
 end
 
@@ -38,6 +42,10 @@ end
 
 ---@param name string? Optional path name; defaults to "default"
 function M.start(name)
+  -- Drop every extmark before clearing the stop list so the buffer
+  -- isn't left with orphan markers pointing at indexes that no longer exist.
+  local anchor = require "codetour.anchor"
+  anchor.detach_all()
   M.data.path_name = name or "default"
   M.data.stops = {}
   M.data.loaded = true -- explicitly initialized; no need to read from disk
@@ -64,6 +72,9 @@ function M.add(note)
     col = col,
     note = note or "",
   })
+  -- Attach an extmark to the just-added stop so future edits track its position.
+  local anchor = require "codetour.anchor"
+  anchor.attach(0, M.data.stops)
   save()
   vim.notify(
     string.format("codetour: stop #%d added at %s:%d", #M.data.stops, vim.fn.fnamemodify(file, ":t"), lnum),
