@@ -107,6 +107,30 @@ describe("codetour.storage", function()
   end)
 end)
 
+describe("codetour.util", function()
+  local util
+
+  before_each(function()
+    package.loaded["codetour.util"] = nil
+    util = require "codetour.util"
+  end)
+
+  it("trim_context strips leading and trailing whitespace", function()
+    assert.equals("foo", util.trim_context "  foo  ")
+    assert.equals("foo bar", util.trim_context "\tfoo bar\n")
+  end)
+
+  it("trim_context truncates to 60 chars", function()
+    local long = string.rep("a", 100)
+    assert.equals(60, #util.trim_context(long))
+  end)
+
+  it("trim_context returns empty string for nil or whitespace-only input", function()
+    assert.equals("", util.trim_context(nil))
+    assert.equals("", util.trim_context "   ")
+  end)
+end)
+
 describe("codetour.anchor", function()
   local anchor
 
@@ -184,6 +208,65 @@ describe("codetour.anchor", function()
     assert.is_not_nil(anchor._buf_extmarks[bufnr])
     anchor.detach_all()
     assert.is_nil(next(anchor._buf_extmarks))
+  end)
+
+  it("attach() re-anchors when context is found at a different line", function()
+    -- File on disk now has the original content shifted down by 2 lines
+    local bufnr, file = buffer_with_lines {
+      "new line 1",
+      "new line 2",
+      "line 1",
+      "line 2",
+      "function dispatch(args)",
+      "line 4",
+    }
+    -- Persisted state thinks the function is at line 3, with that snippet as context
+    local stops = {
+      { file = file, lnum = 3, col = 0, note = "the dispatch fn", context = "function dispatch(args)" },
+    }
+    anchor.attach(bufnr, stops)
+    -- Should have re-anchored to line 5 and updated lnum
+    assert.equals(5, stops[1].lnum)
+  end)
+
+  it("attach() honours stored lnum when context still matches there", function()
+    local bufnr, file = buffer_with_lines { "line 1", "function dispatch(args)", "line 3" }
+    local stops = {
+      { file = file, lnum = 2, col = 0, note = "", context = "function dispatch(args)" },
+    }
+    anchor.attach(bufnr, stops)
+    assert.equals(2, stops[1].lnum) -- unchanged
+  end)
+
+  it("attach() falls back to stored lnum when context is missing", function()
+    local bufnr, file = buffer_with_lines { "line 1", "line 2", "line 3" }
+    -- No context field: simulates a path file from before Phase 5 (or a stop on a blank line)
+    local stops = { { file = file, lnum = 2, col = 0, note = "", context = "" } }
+    anchor.attach(bufnr, stops)
+    assert.equals(2, stops[1].lnum)
+  end)
+
+  it("attach() falls back to stored lnum when context is not found anywhere", function()
+    local bufnr, file = buffer_with_lines { "line 1", "totally unrelated content", "line 3" }
+    local stops = {
+      { file = file, lnum = 2, col = 0, note = "", context = "function dispatch(args)" },
+    }
+    anchor.attach(bufnr, stops)
+    assert.equals(2, stops[1].lnum) -- no match found, stays at stored lnum
+  end)
+
+  it("refresh() updates context from the live line content", function()
+    local original = "function foo()"
+    local bufnr, file = buffer_with_lines { original, "line 2" }
+    local stops = {
+      { file = file, lnum = 1, col = 0, note = "", context = original },
+    }
+    anchor.attach(bufnr, stops)
+    -- Replace the line's bytes in place so the extmark stays put on row 0.
+    -- (set_lines would treat this as delete-then-insert and the extmark moves off-row.)
+    vim.api.nvim_buf_set_text(bufnr, 0, 0, 0, #original, { "function foo_renamed()" })
+    anchor.refresh(stops)
+    assert.equals("function foo_renamed()", stops[1].context)
   end)
 end)
 

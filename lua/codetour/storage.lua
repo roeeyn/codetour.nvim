@@ -53,6 +53,7 @@ function M.save(path_name, stops)
       lnum = s.lnum,
       col = s.col,
       note = s.note,
+      context = s.context or "",
     })
   end
 
@@ -107,6 +108,7 @@ function M.load()
       lnum = s.lnum,
       col = s.col,
       note = s.note or "",
+      context = s.context or "", -- old files (pre-Phase-5) won't have this field
     })
   end
 

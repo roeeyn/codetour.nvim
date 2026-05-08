@@ -6,6 +6,7 @@ local M = {}
 ---@field lnum integer 1-indexed line number (matches nvim_win_get_cursor)
 ---@field col integer 0-indexed byte column (matches nvim_win_get_cursor)
 ---@field note string User's prose for this stop; empty string if no note was given
+---@field context string Trimmed snippet (~60 chars) of the line content; used for cold-load re-anchor
 
 ---@class CodeTour.State
 ---@field path_name string? Active path's name; nil before any :TourStart/:TourAdd
@@ -66,11 +67,14 @@ function M.add(note)
   end
   local cursor = vim.api.nvim_win_get_cursor(0)
   local lnum, col = cursor[1], cursor[2]
+  local line = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum, false)[1] or ""
+  local util = require "codetour.util"
   table.insert(M.data.stops, {
     file = file,
     lnum = lnum,
     col = col,
     note = note or "",
+    context = util.trim_context(line),
   })
   -- Attach an extmark to the just-added stop so future edits track its position.
   local anchor = require "codetour.anchor"

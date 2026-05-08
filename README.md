@@ -97,3 +97,10 @@ make check   # stylua --check (used by CI)
 ## Inspirations
 
 [harpoon.nvim](https://github.com/ThePrimeagen/harpoon), [arrow.nvim](https://github.com/otavioschwanck/arrow.nvim), [VS Code Bookmarks](https://github.com/alefragnani/vscode-bookmarks) by Alessandro Fragnani, [VS Code CodeTour](https://github.com/microsoft/codetour) by Microsoft.
+
+## TODOS
+
+- configurable set path instead of git/config
+- named tours, and multiple per repo and branch
+    - I think this is the `TourStart` command, if so, rename it to TourCreate
+- edit in buffer like oil
