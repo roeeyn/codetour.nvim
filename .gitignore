@@ -2,3 +2,9 @@
 .DS_Store
 *.swp
 *.swo
+
+# Self-test leak guard: live-testing the plugin from inside this repo
+# can write tours to ./.codetour/. Not source data, ignore it. Plugin
+# users in their own repos should NOT add this rule unless they want
+# tours private to their clone.
+.codetour/

@@ -479,6 +479,84 @@ describe("codetour.notes", function()
   end)
 end)
 
+describe("codetour.signs", function()
+  local signs
+  local anchor
+
+  before_each(function()
+    package.loaded["codetour.signs"] = nil
+    package.loaded["codetour.anchor"] = nil
+    signs = require "codetour.signs"
+    anchor = require "codetour.anchor"
+    -- Force enabled in case a prior test mutated config
+    require("codetour.config").merge { signs = { enabled = true, text = nil, highlight = "Special" } }
+  end)
+  after_each(function()
+    signs.detach_all()
+    anchor.detach_all()
+  end)
+
+  local function buffer_with_lines(lines)
+    local tmp = vim.fn.tempname()
+    vim.fn.writefile(lines, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    return vim.api.nvim_get_current_buf(), tmp
+  end
+
+  it("refresh() places a sign per stop with the stop's index as the sign text", function()
+    local bufnr, file = buffer_with_lines { "a", "b", "c" }
+    local stops = {
+      { file = file, lnum = 1, col = 0, note = "", context = "" },
+      { file = file, lnum = 3, col = 0, note = "", context = "" },
+    }
+    anchor.attach(bufnr, stops)
+    signs.refresh(bufnr, stops)
+
+    local NS = vim.api.nvim_create_namespace "codetour_signs"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.equals(2, #marks)
+    -- Read sign_text per row
+    local at = {}
+    for _, m in ipairs(marks) do
+      at[m[2]] = m[4].sign_text
+    end
+    assert.is_truthy(at[0]:match "1") -- stop 1 → "1"
+    assert.is_truthy(at[2]:match "2") -- stop 2 → "2"
+  end)
+
+  it("refresh() honours the configured fixed text override", function()
+    local bufnr, file = buffer_with_lines { "a", "b" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "", context = "" } }
+    require("codetour.config").merge { signs = { text = "●" } }
+    anchor.attach(bufnr, stops)
+    signs.refresh(bufnr, stops)
+
+    local NS = vim.api.nvim_create_namespace "codetour_signs"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.is_truthy(marks[1][4].sign_text:match "●")
+    require("codetour.config").merge { signs = { text = nil } }
+  end)
+
+  it("refresh() does nothing when signs.enabled is false", function()
+    local bufnr, file = buffer_with_lines { "a" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "", context = "" } }
+    require("codetour.config").merge { signs = { enabled = false } }
+    anchor.attach(bufnr, stops)
+    signs.refresh(bufnr, stops)
+    assert.is_nil(signs._buf_signs[bufnr])
+    require("codetour.config").merge { signs = { enabled = true } }
+  end)
+
+  it("detach_all() clears every tracked sign", function()
+    local bufnr, file = buffer_with_lines { "a" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "", context = "" } }
+    anchor.attach(bufnr, stops)
+    signs.refresh(bufnr, stops)
+    signs.detach_all()
+    assert.is_nil(next(signs._buf_signs))
+  end)
+end)
+
 describe("codetour.picker", function()
   local original_cwd
   local repo
@@ -492,6 +570,7 @@ describe("codetour.picker", function()
     package.loaded["codetour.state"] = nil
     package.loaded["codetour.anchor"] = nil
     package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.signs"] = nil
     package.loaded["codetour.picker"] = nil
     original_select = vim.ui.select
   end)
@@ -612,6 +691,7 @@ describe("codetour.state", function()
     package.loaded["codetour.state"] = nil
     package.loaded["codetour.anchor"] = nil
     package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.signs"] = nil
     state = require "codetour.state"
   end)
   after_each(function()

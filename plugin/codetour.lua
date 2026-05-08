@@ -5,12 +5,14 @@ vim.g.loaded_codetour = 1
 
 local codetour_group = vim.api.nvim_create_augroup("codetour", { clear = true })
 
--- Define our highlight group with `default = true` so user :hi overrides win.
+-- Define our highlight groups with `default = true` so user :hi overrides win.
 -- Re-set on ColorScheme so a `:colorscheme ...` that calls `:hi clear` doesn't wipe us.
 local function set_default_hl()
   local ok, config = pcall(require, "codetour.config")
-  local link = ok and config.opts.note_highlight or "DiagnosticInfo"
-  vim.api.nvim_set_hl(0, "CodetourNote", { link = link, default = true })
+  local note_link = ok and config.opts.note_highlight or "DiagnosticInfo"
+  local sign_link = ok and config.opts.signs and config.opts.signs.highlight or "Special"
+  vim.api.nvim_set_hl(0, "CodetourNote", { link = note_link, default = true })
+  vim.api.nvim_set_hl(0, "CodetourSign", { link = sign_link, default = true })
 end
 set_default_hl()
 vim.api.nvim_create_autocmd("ColorScheme", { group = codetour_group, callback = set_default_hl })
@@ -24,6 +26,8 @@ vim.api.nvim_create_autocmd("BufRead", {
     anchor.attach(args.buf, state.data.stops)
     local notes = require "codetour.notes"
     notes.refresh(args.buf, state.data.stops, state.data.active_tour)
+    local signs = require "codetour.signs"
+    signs.refresh(args.buf, state.data.stops)
   end,
 })
 

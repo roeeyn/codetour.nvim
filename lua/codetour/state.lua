@@ -63,24 +63,28 @@ local function require_active()
   return true
 end
 
----Drop extmarks/notes across all loaded buffers and reset in-memory state.
+---Drop extmarks/notes/signs across all loaded buffers and reset in-memory state.
 local function reset_in_memory()
   local anchor = require "codetour.anchor"
   local notes = require "codetour.notes"
+  local signs = require "codetour.signs"
   anchor.detach_all()
   notes.detach_all()
+  signs.detach_all()
   M.data.active_tour = nil
   M.data.stops = {}
 end
 
----Re-attach anchors and re-render notes across all loaded buffers, then sync qf.
+---Re-attach anchors and re-render notes/signs across all loaded buffers, then sync qf.
 local function rehydrate_all_buffers()
   local anchor = require "codetour.anchor"
   local notes = require "codetour.notes"
+  local signs = require "codetour.signs"
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       anchor.attach(bufnr, M.data.stops)
       notes.refresh(bufnr, M.data.stops, M.data.active_tour)
+      signs.refresh(bufnr, M.data.stops)
     end
   end
   local qf = require "codetour.qf"
@@ -237,6 +241,8 @@ function M.add(note)
   anchor.attach(0, M.data.stops)
   local notes = require "codetour.notes"
   notes.refresh_all(M.data.stops, M.data.active_tour)
+  local signs = require "codetour.signs"
+  signs.refresh_all(M.data.stops)
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.stops)
   save()
@@ -288,6 +294,7 @@ function M.edit_note(text)
   M.data.stops[idx].note = text
   local notes = require "codetour.notes"
   notes.refresh(0, M.data.stops, M.data.active_tour)
+  -- signs don't depend on note text, so no signs.refresh needed here
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.stops)
   save()
@@ -315,14 +322,17 @@ function M.remove()
   local removed_label = string.format("%s:%d", vim.fn.fnamemodify(removed.file, ":t"), removed.lnum)
   table.remove(M.data.stops, idx)
 
-  -- Indices shifted; rebuild extmark/note tracking from scratch.
+  -- Indices shifted; rebuild extmark/note/sign tracking from scratch.
   local notes = require "codetour.notes"
+  local signs = require "codetour.signs"
   anchor.detach_all()
   notes.detach_all()
+  signs.detach_all()
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       anchor.attach(bufnr, M.data.stops)
       notes.refresh(bufnr, M.data.stops, M.data.active_tour)
+      signs.refresh(bufnr, M.data.stops)
     end
   end
 

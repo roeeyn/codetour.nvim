@@ -1,5 +1,10 @@
 local M = {}
 
+---@class CodeTour.SignsOpts
+---@field enabled? boolean Render a sign in the gutter at each stop's line (default: true)
+---@field text? string? If set, use this fixed string for every stop's sign. If nil, use the stop's index (e.g. "1", "2"). Max 2 characters.
+---@field highlight? string Highlight group to link CodetourSign to (default: "Special")
+
 ---@class CodeTour.Opts
 ---@field default_keymaps? boolean Register default <leader>t* keymaps (default: false)
 ---@field close_qf_on_tour_close? boolean Run :cclose in :TourClose (default: false)
@@ -7,6 +12,7 @@ local M = {}
 ---@field note_prefix? string Template prefixed to each note. Placeholders: {name}, {idx}, {total}. Set to "" to disable.
 ---@field debug? boolean Show informational notifications. WARN/ERROR are always shown. Default false.
 ---@field storage_path? string Where tour files live. Relative paths join to the git root; absolute paths used as-is. Default ".codetour" (visible at repo root, easily committed/shared). Set to ".git/info/codetour" for the legacy hidden behavior.
+---@field signs? CodeTour.SignsOpts Sign-column markers config
 
 ---@type CodeTour.Opts
 M.defaults = {
@@ -16,6 +22,11 @@ M.defaults = {
   note_prefix = "{name} ({idx}/{total}): ", -- scannable prefix; set to "" to disable
   debug = false, -- when false, INFO-level confirmations are suppressed; WARN/ERROR always show
   storage_path = ".codetour", -- relative to git root; visible & committable. Override with absolute path for non-git workflows.
+  signs = {
+    enabled = true,
+    text = nil, -- nil = use the stop's 1-based index (1, 2, ...); set a string for a fixed marker like "●"
+    highlight = "Special", -- linked via CodetourSign with default = true
+  },
 }
 
 ---@type CodeTour.Opts

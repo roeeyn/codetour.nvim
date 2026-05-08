@@ -54,14 +54,16 @@ function M.setup(opts)
 
   -- Cover the case where this plugin loads after some buffers were already read
   -- (e.g. lazy.nvim's default deferred loading): walk loaded buffers and attach
-  -- extmarks/notes for the active tour's stops.
+  -- extmarks/notes/signs for the active tour's stops.
   local anchor = require "codetour.anchor"
   local notes = require "codetour.notes"
+  local signs = require "codetour.signs"
   state.ensure_loaded()
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       anchor.attach(bufnr, state.data.stops)
       notes.refresh(bufnr, state.data.stops, state.data.active_tour)
+      signs.refresh(bufnr, state.data.stops)
     end
   end
 end

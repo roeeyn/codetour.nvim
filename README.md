@@ -23,7 +23,7 @@ The closest sibling is VS Code's [CodeTour](https://github.com/microsoft/codetou
 
 ## Requirements
 
-- Neovim 0.9 or later
+- Neovim 0.10 or later (uses extmark-based signs)
 - `git` on `$PATH`
 
 ## Installation
@@ -107,6 +107,15 @@ require("codetour").setup({
   --   storage_path = ".git/info/codetour"  -- hidden, never committed
   --   storage_path = "~/.local/share/codetour/myproject"  -- outside repo
   storage_path = ".codetour",
+
+  -- Sign-column markers at each stop's line. Each sign shows the stop's
+  -- index (1, 2, ...) by default. Set `text` to a fixed string for a
+  -- uniform marker like "●".
+  signs = {
+    enabled = true,
+    text = nil,           -- nil = stop index; or e.g. "●", "▎", "⌖"
+    highlight = "Special",
+  },
 })
 ```
 
