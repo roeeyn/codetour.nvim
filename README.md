@@ -168,6 +168,7 @@ make check   # stylua --check (used by CI)
 
 ## TODOS
 
+- add precommit validations
 - For all the prints, evaluate if they need to be enabled by a debug config, or if they are strictly relevant
     - add a debug config
 - configurable storage path (alternative to `.git/info/`)
