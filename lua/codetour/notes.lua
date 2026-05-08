@@ -14,16 +14,16 @@ M._visible = true
 ---vanishing.
 ---@param idx integer
 ---@param total integer
----@param path_name string?
+---@param tour_name string?
 ---@return string
-local function format_prefix(idx, total, path_name)
+local function format_prefix(idx, total, tour_name)
   local config = require "codetour.config"
   local fmt = config.opts.note_prefix or ""
   if fmt == "" then
     return ""
   end
   local replacements = {
-    ["{name}"] = path_name or "default",
+    ["{name}"] = tour_name or "default",
     ["{idx}"] = tostring(idx),
     ["{total}"] = tostring(total),
   }
@@ -33,7 +33,7 @@ local function format_prefix(idx, total, path_name)
   return out
 end
 
-local function set_virt_lines(bufnr, idx, total, row, note, path_name)
+local function set_virt_lines(bufnr, idx, total, row, note, tour_name)
   local virt_lines = nil
   if note ~= nil and note ~= "" then
     -- Indent the note to match the line below so deeply-indented stops
@@ -41,7 +41,7 @@ local function set_virt_lines(bufnr, idx, total, row, note, path_name)
     -- indent so it visually associates with the code block.
     local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
     local indent = line:match "^(%s*)" or ""
-    local prefix = format_prefix(idx, total, path_name)
+    local prefix = format_prefix(idx, total, tour_name)
     virt_lines = { { { indent .. prefix .. note, "CodetourNote" } } }
   end
 
@@ -63,8 +63,8 @@ end
 ---Reads each stop's current row from anchor.row_of(); if nil (no extmark), skip.
 ---@param bufnr integer
 ---@param stops CodeTour.Stop[]
----@param path_name string? Active path name; used for the {name} placeholder in note_prefix
-function M.refresh(bufnr, stops, path_name)
+---@param tour_name string? Active path name; used for the {name} placeholder in note_prefix
+function M.refresh(bufnr, stops, tour_name)
   bufnr = require("codetour.util").actual_bufnr(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -87,7 +87,7 @@ function M.refresh(bufnr, stops, path_name)
   for idx, stop in ipairs(stops) do
     local row = anchor.row_of(bufnr, idx)
     if row ~= nil then
-      set_virt_lines(bufnr, idx, total, row, stop.note or "", path_name)
+      set_virt_lines(bufnr, idx, total, row, stop.note or "", tour_name)
     end
   end
 end
@@ -95,25 +95,25 @@ end
 ---Walk every buffer the anchor module is tracking and refresh notes there.
 ---Useful after toggling visibility on, or after a change that affects multiple files.
 ---@param stops CodeTour.Stop[]
----@param path_name string?
-function M.refresh_all(stops, path_name)
+---@param tour_name string?
+function M.refresh_all(stops, tour_name)
   if not M._visible then
     return
   end
   local anchor = require "codetour.anchor"
   for bufnr, _ in pairs(anchor._buf_extmarks) do
-    M.refresh(bufnr, stops, path_name)
+    M.refresh(bufnr, stops, tour_name)
   end
 end
 
 ---Flip visibility. Hides → clears virt_lines extmarks. Shows → re-renders.
 ---@param stops CodeTour.Stop[]
----@param path_name string?
+---@param tour_name string?
 ---@return boolean visible The new visibility state
-function M.toggle(stops, path_name)
+function M.toggle(stops, tour_name)
   M._visible = not M._visible
   if M._visible then
-    M.refresh_all(stops, path_name)
+    M.refresh_all(stops, tour_name)
   else
     M.detach_all()
   end

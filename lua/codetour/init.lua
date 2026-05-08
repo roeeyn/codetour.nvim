@@ -13,15 +13,15 @@ function M.setup(opts)
   vim.api.nvim_set_hl(0, "CodetourNote", { link = config.opts.note_highlight, default = true })
 
   -- Cover the case where this plugin loads after some buffers were already read
-  -- (e.g. lazy.nvim's default deferred loading): walk the loaded buffers and
-  -- attach extmarks (and notes) for any matching stops.
+  -- (e.g. lazy.nvim's default deferred loading): walk loaded buffers and attach
+  -- extmarks/notes for the active tour's stops.
   local anchor = require "codetour.anchor"
   local notes = require "codetour.notes"
   state.ensure_loaded()
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
       anchor.attach(bufnr, state.data.stops)
-      notes.refresh(bufnr, state.data.stops, state.data.path_name)
+      notes.refresh(bufnr, state.data.stops, state.data.active_tour)
     end
   end
 end
@@ -30,20 +30,24 @@ function M.ping()
   vim.notify("codetour: pong", vim.log.levels.INFO)
 end
 
----@param name string? Optional path name; defaults to "default"
-function M.start(name)
-  state.ensure_loaded()
-  if #state.data.stops > 0 then
-    local current = state.data.path_name or "default"
-    local prompt = string.format("codetour: overwrite path '%s' (%d stops)?", current, #state.data.stops)
-    -- 3rd arg `2` defaults the prompt to "No" so an accidental <Enter> bails.
-    local choice = vim.fn.confirm(prompt, "&Yes\n&No", 2)
-    if choice ~= 1 then
-      vim.notify("codetour: :TourStart cancelled", vim.log.levels.INFO)
-      return
-    end
-  end
-  state.start(name)
+---@param name string? Tour name (required)
+function M.create(name)
+  state.create(name)
+end
+
+---@param name string? Tour name to switch to (required)
+function M.select(name)
+  state.select(name)
+end
+
+---@param name string? Tour name to delete (required)
+function M.delete(name)
+  state.delete(name)
+end
+
+---@return string[] tour names available in storage
+function M.list_tours()
+  return state.list_tours()
 end
 
 ---@param note string? Optional note describing why this stop matters
@@ -66,7 +70,7 @@ end
 
 function M.toggle_notes()
   local notes = require "codetour.notes"
-  local visible = notes.toggle(state.data.stops, state.data.path_name)
+  local visible = notes.toggle(state.data.stops, state.data.active_tour)
   vim.notify("codetour: notes " .. (visible and "shown" or "hidden"), vim.log.levels.INFO)
 end
 

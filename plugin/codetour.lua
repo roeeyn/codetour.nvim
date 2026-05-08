@@ -23,35 +23,53 @@ vim.api.nvim_create_autocmd("BufRead", {
     local anchor = require "codetour.anchor"
     anchor.attach(args.buf, state.data.stops)
     local notes = require "codetour.notes"
-    notes.refresh(args.buf, state.data.stops, state.data.path_name)
+    notes.refresh(args.buf, state.data.stops, state.data.active_tour)
   end,
 })
+
+local function tour_complete()
+  local ok, codetour = pcall(require, "codetour")
+  if not ok then
+    return {}
+  end
+  return codetour.list_tours()
+end
 
 vim.api.nvim_create_user_command("TourPing", function()
   require("codetour").ping()
 end, { desc = "codetour: smoke-test command" })
 
-vim.api.nvim_create_user_command("TourStart", function(args)
+vim.api.nvim_create_user_command("TourCreate", function(args)
   local name = args.args ~= "" and args.args or nil
-  require("codetour").start(name)
-end, { nargs = "?", desc = "codetour: start a new path (optional name)" })
+  require("codetour").create(name)
+end, { nargs = "?", desc = "codetour: create a new tour and make it active" })
+
+vim.api.nvim_create_user_command("TourSelect", function(args)
+  local name = args.args ~= "" and args.args or nil
+  require("codetour").select(name)
+end, {
+  nargs = "?",
+  complete = tour_complete,
+  desc = "codetour: switch the active tour",
+})
+
+vim.api.nvim_create_user_command("TourDelete", function(args)
+  local name = args.args ~= "" and args.args or nil
+  require("codetour").delete(name)
+end, {
+  nargs = "?",
+  complete = tour_complete,
+  desc = "codetour: delete a tour by name",
+})
 
 vim.api.nvim_create_user_command("TourAdd", function(args)
   local note = args.args ~= "" and args.args or nil
   require("codetour").add(note)
-end, { nargs = "*", desc = "codetour: add a stop at cursor (optional note)" })
+end, { nargs = "*", desc = "codetour: add a stop at cursor to the active tour" })
 
-vim.api.nvim_create_user_command("TourDump", function()
-  require("codetour").dump()
-end, { desc = "codetour: print state for debugging" })
-
-vim.api.nvim_create_user_command("TourOpen", function()
-  require("codetour").open()
-end, { desc = "codetour: populate quickfix with current path; jump to stop 1" })
-
-vim.api.nvim_create_user_command("TourClose", function()
-  require("codetour").close()
-end, { desc = "codetour: restore prior quickfix and close cwindow" })
+vim.api.nvim_create_user_command("TourRemove", function()
+  require("codetour").remove()
+end, { desc = "codetour: remove the nearest stop in the current buffer" })
 
 vim.api.nvim_create_user_command("TourNoteEdit", function(args)
   require("codetour").edit_note(args.args)
@@ -61,6 +79,14 @@ vim.api.nvim_create_user_command("TourNotesVirtualTextToggle", function()
   require("codetour").toggle_notes()
 end, { desc = "codetour: show/hide the virtual-text rendering of stop notes" })
 
-vim.api.nvim_create_user_command("TourRemove", function()
-  require("codetour").remove()
-end, { desc = "codetour: remove the nearest stop in the current buffer" })
+vim.api.nvim_create_user_command("TourOpen", function()
+  require("codetour").open()
+end, { desc = "codetour: populate quickfix with current tour; jump to stop 1" })
+
+vim.api.nvim_create_user_command("TourClose", function()
+  require("codetour").close()
+end, { desc = "codetour: restore prior quickfix and close cwindow" })
+
+vim.api.nvim_create_user_command("TourDump", function()
+  require("codetour").dump()
+end, { desc = "codetour: print state for debugging" })

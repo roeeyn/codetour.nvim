@@ -1,7 +1,22 @@
 local git = require "codetour.git"
 local M = {}
 
-local STORAGE_VERSION = 1
+local STORAGE_VERSION = 2
+local ACTIVE_FILE = "_active_tour.txt"
+
+local function tour_dir(info)
+  return info.root .. "/.git/info/codetour"
+end
+
+local function tour_file(info, name)
+  -- Sanitize: replace path-unsafe chars with `_`
+  local safe = name:gsub("[/\\:]", "_")
+  return tour_dir(info) .. "/" .. safe .. ".json"
+end
+
+local function active_file_path(info)
+  return tour_dir(info) .. "/" .. ACTIVE_FILE
+end
 
 local function to_relative(file, root)
   if root and file:sub(1, #root + 1) == root .. "/" then
@@ -38,9 +53,72 @@ local function write_file(path, content)
   return true
 end
 
----@param path_name string? Active path's name; defaults to "default" if nil
----@param stops CodeTour.Stop[] Stops to persist (file paths converted to git-root-relative)
-function M.save(path_name, stops)
+---List the names of tours present in storage. Returns empty list if not in a repo.
+---@return string[]
+function M.list_tours()
+  local info = git.info()
+  if info == nil then
+    return {}
+  end
+  local dir = tour_dir(info)
+  if vim.fn.isdirectory(dir) == 0 then
+    return {}
+  end
+  local out = {}
+  for _, file in ipairs(vim.fn.glob(dir .. "/*.json", false, true)) do
+    local name = vim.fn.fnamemodify(file, ":t:r")
+    if name ~= "" and not name:match "^_" then
+      table.insert(out, name)
+    end
+  end
+  table.sort(out)
+  return out
+end
+
+---Load a tour by name.
+---@param name string
+---@return { name: string, stops: CodeTour.Stop[] }? nil if not found, parse error, or invalid
+function M.load(name)
+  if name == nil or name == "" then
+    return nil
+  end
+  local info = git.info()
+  if info == nil then
+    return nil
+  end
+  local file = tour_file(info, name)
+  local content = read_file(file)
+  if content == nil then
+    return nil
+  end
+
+  local ok, decoded = pcall(vim.fn.json_decode, content)
+  if not ok or type(decoded) ~= "table" then
+    vim.notify("codetour: failed to parse " .. file, vim.log.levels.WARN)
+    return nil
+  end
+
+  local restored = {}
+  for _, s in ipairs(decoded.stops or {}) do
+    table.insert(restored, {
+      file = to_absolute(s.file, info.root),
+      lnum = s.lnum,
+      col = s.col,
+      note = s.note or "",
+      context = s.context or "",
+    })
+  end
+
+  return { name = decoded.name or name, stops = restored }
+end
+
+---Save a tour to its file.
+---@param name string
+---@param stops CodeTour.Stop[]
+function M.save(name, stops)
+  if name == nil or name == "" then
+    return
+  end
   local info = git.info()
   if info == nil then
     return -- not in a repo; persistence disabled silently
@@ -59,60 +137,63 @@ function M.save(path_name, stops)
 
   local payload = {
     version = STORAGE_VERSION,
-    active = path_name or "default",
-    paths = {
-      { name = path_name or "default", stops = stops_rel },
-    },
+    name = name,
+    stops = stops_rel,
   }
 
+  local file = tour_file(info, name)
   local encoded = vim.fn.json_encode(payload)
-  if not write_file(info.file, encoded) then
-    vim.notify("codetour: failed to write " .. info.file, vim.log.levels.ERROR)
+  if not write_file(file, encoded) then
+    vim.notify("codetour: failed to write " .. file, vim.log.levels.ERROR)
   end
 end
 
----@return { path_name: string, stops: CodeTour.Stop[] }? loaded nil if no file, parse error, or no active path entry
-function M.load()
+---Delete a tour file by name.
+---@param name string
+---@return boolean success
+function M.delete(name)
+  if name == nil or name == "" then
+    return false
+  end
+  local info = git.info()
+  if info == nil then
+    return false
+  end
+  local file = tour_file(info, name)
+  return vim.fn.delete(file) == 0
+end
+
+---Read the name of the last-active tour, or nil.
+---@return string?
+function M.read_active()
   local info = git.info()
   if info == nil then
     return nil
   end
-
-  local content = read_file(info.file)
+  local content = read_file(active_file_path(info))
   if content == nil then
-    return nil -- no file yet
-  end
-
-  local ok, decoded = pcall(vim.fn.json_decode, content)
-  if not ok or type(decoded) ~= "table" then
-    vim.notify("codetour: failed to parse " .. info.file, vim.log.levels.WARN)
     return nil
   end
-
-  local active_name = decoded.active or "default"
-  local active_path
-  for _, p in ipairs(decoded.paths or {}) do
-    if p.name == active_name then
-      active_path = p
-      break
-    end
-  end
-  if active_path == nil then
+  local trimmed = content:gsub("%s+$", "")
+  if trimmed == "" then
     return nil
   end
+  return trimmed
+end
 
-  local restored = {}
-  for _, s in ipairs(active_path.stops or {}) do
-    table.insert(restored, {
-      file = to_absolute(s.file, info.root),
-      lnum = s.lnum,
-      col = s.col,
-      note = s.note or "",
-      context = s.context or "", -- old files (pre-Phase-5) won't have this field
-    })
+---Write (or clear) the active-tour pointer.
+---@param name string?
+function M.write_active(name)
+  local info = git.info()
+  if info == nil then
+    return
   end
-
-  return { path_name = active_path.name, stops = restored }
+  local file = active_file_path(info)
+  if name == nil or name == "" then
+    vim.fn.delete(file)
+    return
+  end
+  write_file(file, name .. "\n")
 end
 
 return M

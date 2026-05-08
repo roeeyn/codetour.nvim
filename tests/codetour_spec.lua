@@ -62,15 +62,19 @@ describe("codetour.storage", function()
     vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
   end)
 
-  it("returns nil when no file exists yet", function()
-    assert.is_nil(storage.load())
+  it("returns nil when no tour file exists", function()
+    assert.is_nil(storage.load "missing")
   end)
 
-  it("round-trips an empty path", function()
+  it("list_tours returns empty when no tours exist", function()
+    assert.equals(0, #storage.list_tours())
+  end)
+
+  it("round-trips an empty tour", function()
     storage.save("default", {})
-    local loaded = storage.load()
+    local loaded = storage.load "default"
     assert.is_not_nil(loaded)
-    assert.equals("default", loaded.path_name)
+    assert.equals("default", loaded.name)
     assert.equals(0, #loaded.stops)
   end)
 
@@ -80,18 +84,20 @@ describe("codetour.storage", function()
       { file = info.root .. "/foo.lua", lnum = 10, col = 0, note = "entry" },
       { file = info.root .. "/bar/baz.py", lnum = 42, col = 4, note = "" },
     }
-    storage.save("default", stops)
+    storage.save("auth", stops)
 
-    -- Verify on-disk file uses relative paths
-    local f = io.open(info.file, "r")
+    -- On-disk uses relative paths
+    local on_disk = info.root .. "/.git/info/codetour/auth.json"
+    local f = io.open(on_disk, "r")
     local raw = f:read "*a"
     f:close()
     local decoded = vim.fn.json_decode(raw)
-    assert.equals("foo.lua", decoded.paths[1].stops[1].file)
-    assert.equals("bar/baz.py", decoded.paths[1].stops[2].file)
+    assert.equals("auth", decoded.name)
+    assert.equals("foo.lua", decoded.stops[1].file)
+    assert.equals("bar/baz.py", decoded.stops[2].file)
 
-    -- Verify load reconstructs absolute paths
-    local loaded = storage.load()
+    -- Load reconstructs absolute paths
+    local loaded = storage.load "auth"
     assert.equals(info.root .. "/foo.lua", loaded.stops[1].file)
     assert.equals(10, loaded.stops[1].lnum)
     assert.equals("entry", loaded.stops[1].note)
@@ -99,11 +105,35 @@ describe("codetour.storage", function()
 
   it("returns nil on malformed JSON", function()
     local info = git.info()
-    vim.fn.mkdir(vim.fn.fnamemodify(info.file, ":h"), "p")
-    local f = io.open(info.file, "w")
+    local file = info.root .. "/.git/info/codetour/auth.json"
+    vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
+    local f = io.open(file, "w")
     f:write "garbage{{{"
     f:close()
-    assert.is_nil(storage.load())
+    assert.is_nil(storage.load "auth")
+  end)
+
+  it("active-tour pointer round-trips", function()
+    assert.is_nil(storage.read_active())
+    storage.write_active "auth"
+    assert.equals("auth", storage.read_active())
+    storage.write_active(nil)
+    assert.is_nil(storage.read_active())
+  end)
+
+  it("delete removes the tour file", function()
+    storage.save("doomed", {})
+    assert.is_not_nil(storage.load "doomed")
+    assert.is_true(storage.delete "doomed")
+    assert.is_nil(storage.load "doomed")
+  end)
+
+  it("list_tours sorts and excludes the _active_tour pointer", function()
+    storage.save("billing", {})
+    storage.save("auth", {})
+    storage.write_active "auth"
+    local tours = storage.list_tours()
+    assert.same({ "auth", "billing" }, tours)
   end)
 end)
 
@@ -409,34 +439,124 @@ describe("codetour.state", function()
     repo = tmpdir()
     init_git_repo(repo)
     vim.cmd("cd " .. vim.fn.fnameescape(repo))
-    -- Re-require so state.data starts fresh per test
+    -- Re-require state, anchor, and notes so all module-local maps start
+    -- empty per test (otherwise _buf_extmarks/_buf_marks leak across tests
+    -- and anchor.attach silently skips "already tracked" indices).
     package.loaded["codetour.state"] = nil
+    package.loaded["codetour.anchor"] = nil
+    package.loaded["codetour.notes"] = nil
     state = require "codetour.state"
   end)
   after_each(function()
     vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
   end)
 
-  it("start() defaults to 'default' when no name given", function()
-    state.start(nil)
-    assert.equals("default", state.data.path_name)
+  it("create() makes a new tour active and persists an empty file", function()
+    state.create "auth"
+    assert.equals("auth", state.data.active_tour)
     assert.equals(0, #state.data.stops)
+    -- Active pointer was written
+    assert.equals("auth", storage.read_active())
+    -- Tour file was created
+    local tours = storage.list_tours()
+    assert.same({ "auth" }, tours)
   end)
 
-  it("start() resets stops and sets path_name", function()
-    state.data.stops = { { file = "x", lnum = 1, col = 0, note = "" } }
-    state.data.path_name = "old"
-    state.start "auth"
-    assert.equals("auth", state.data.path_name)
-    assert.equals(0, #state.data.stops)
+  it("create() refuses to create a tour with an existing name", function()
+    state.create "auth"
+    state.data.active_tour = nil -- pretend nothing's active
+    state.create "auth" -- should refuse
+    -- Original tour file still there, new one wasn't overwritten
+    assert.same({ "auth" }, storage.list_tours())
   end)
 
-  it("start() persists; ensure_loaded() picks up the persisted name", function()
-    state.start "billing"
+  it("select() switches the active tour and reloads its stops", function()
+    state.create "auth"
+    -- pretend we added a stop manually
+    state.data.stops = { { file = "/x", lnum = 1, col = 0, note = "auth-stop", context = "" } }
+    storage.save("auth", state.data.stops)
+
+    state.create "billing"
+    assert.equals("billing", state.data.active_tour)
+    assert.equals(0, #state.data.stops)
+
+    state.select "auth"
+    assert.equals("auth", state.data.active_tour)
+    assert.equals("auth-stop", state.data.stops[1].note)
+  end)
+
+  it("select() warns and no-ops when the tour doesn't exist", function()
+    state.create "auth"
+    state.select "nope"
+    assert.equals("auth", state.data.active_tour, "active tour should be unchanged")
+  end)
+
+  it("delete() removes a non-active tour and leaves active alone", function()
+    state.create "auth"
+    state.create "billing" -- now active = billing
+    -- Stub confirm to always accept
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+    state.delete "auth"
+    vim.fn.confirm = original_confirm
+    assert.same({ "billing" }, storage.list_tours())
+    assert.equals("billing", state.data.active_tour)
+  end)
+
+  it("delete() clears active state when deleting the active tour", function()
+    state.create "auth"
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+    state.delete "auth"
+    vim.fn.confirm = original_confirm
+    assert.is_nil(state.data.active_tour)
+    assert.equals(0, #storage.list_tours())
+    assert.is_nil(storage.read_active())
+  end)
+
+  it("ensure_loaded() restores the last-active tour on a fresh load", function()
+    state.create "billing"
+    -- New module instance, simulating nvim restart
     package.loaded["codetour.state"] = nil
     local fresh = require "codetour.state"
     fresh.ensure_loaded()
-    assert.equals("billing", fresh.data.path_name)
+    assert.equals("billing", fresh.data.active_tour)
+  end)
+
+  it("ensure_loaded() clears the active pointer when the file is missing", function()
+    storage.write_active "ghost" -- pointer to nonexistent tour
+    package.loaded["codetour.state"] = nil
+    local fresh = require "codetour.state"
+    fresh.ensure_loaded()
+    assert.is_nil(fresh.data.active_tour, "phantom pointer should be cleared")
+    assert.is_nil(storage.read_active())
+  end)
+
+  it("add() auto-creates 'default' tour for friction-free first use", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "line 1" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    assert.equals("default", state.data.active_tour)
+    assert.equals(1, #state.data.stops)
+  end)
+
+  it("edit_note() requires an active tour", function()
+    state.data.loaded = true -- skip ensure_loaded; no active tour
+    state.edit_note "anything"
+    -- Nothing crashes; nothing happens
+    assert.is_nil(state.data.active_tour)
+  end)
+
+  it("remove() requires an active tour", function()
+    state.data.loaded = true
+    state.remove()
+    assert.is_nil(state.data.active_tour)
   end)
 
   it("edit_note() rejects empty text", function()
@@ -460,6 +580,7 @@ describe("codetour.state", function()
       { file = tmp, lnum = 3, col = 0, note = "third", context = "" },
     }
     state.data.loaded = true
+    state.data.active_tour = "default"
 
     state.edit_note "rewritten"
     assert.equals("rewritten", state.data.stops[2].note) -- nearest to cursor on line 2
@@ -484,6 +605,7 @@ describe("codetour.state", function()
 
     state.data.stops = { { file = tmp, lnum = 1, col = 0, note = "before", context = "" } }
     state.data.loaded = true
+    state.data.active_tour = "default"
 
     -- Simulate :TourOpen by populating a tour-titled qf list
     vim.fn.setqflist({}, " ", {
@@ -759,7 +881,7 @@ describe("codetour.state", function()
     assert.equals("third", items[3].text)
   end)
 
-  it("start() empties the quickfix list when overwriting an active tour", function()
+  it("create() empties the quickfix list when switching tours mid-tour", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a", "b" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
@@ -768,17 +890,17 @@ describe("codetour.state", function()
     state = require "codetour.state"
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    state.add "first"
+    state.add "first" -- auto-creates "default"
 
     vim.fn.setqflist({}, " ", {
       title = "tour:test",
       items = { { filename = tmp, lnum = 1, col = 1, text = "first" } },
     })
 
-    state.start "fresh" -- no confirm in pure state.start; init.start handles confirm
+    state.create "fresh" -- new empty tour, becomes active
 
     local items = vim.fn.getqflist()
-    assert.equals(0, #items, "tour qf should be emptied after starting a new path")
+    assert.equals(0, #items, "tour qf should be emptied after creating a new tour")
   end)
 
   it("remove() updates the quickfix list when a tour is active", function()
