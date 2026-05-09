@@ -233,14 +233,11 @@ Bypass with `git commit --no-verify` when you really need to.
 
 ## TODOS
 
-- add precommit validations
-- For all the prints, evaluate if they need to be enabled by a debug config, or if they are strictly relevant
-    - add a debug config
-- configurable storage path (alternative to `.git/info/`)
-- gitgutter-style sign-column markers for stop lines (like arrow.nvim)
-- keyboard shortcut to jump between stops in the same file (like git hunks)
-- edit-in-buffer like oil for bulk edit / reorder / remove
-- native Telescope extension (`:Telescope codetour stops`) with split-pane
-    - preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline)
-- lualine integration showing active tour name + stop count
-    - we may skip this as we may rely on the qf UI
+- Native Telescope extension (`:Telescope codetour stops`) with split-pane
+  preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline).
+  Until then, `:TourList` and `:TourSelect` use `vim.ui.select`, which
+  upgrades transparently if the user installs
+  [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim).
+- Lualine component showing the active tour name + stop count
+  (e.g. `tour: auth-flow [2/5]`). Possibly skip — the qf cwindow already
+  surfaces this when open.
