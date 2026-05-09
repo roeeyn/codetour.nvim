@@ -43,8 +43,8 @@ end
 function M.parse(buf_lines)
   local parsed = {}
   for lineno, line in ipairs(buf_lines) do
-    if line:match "^%s*$" then
-      -- skip blank lines
+    if line:match "^%s*$" or line:match "^%s*#" then
+      -- skip blank and comment lines (the buffer's header uses `#` prefix)
     else
       local idx, _file, _lnum, note = line:match(LINE_PATTERN)
       if idx == nil then
@@ -99,6 +99,36 @@ function M.commit(buf_lines)
     return false, perr
   end
   return M.apply(parsed)
+end
+
+---Build the full list-buffer content: a few `#` header lines + the rendered stops.
+---The header explains the keymaps and shows the active tour name + count.
+---@param stops CodeTour.Stop[]
+---@param tour_name string?
+---@return string[]
+function M._build_buffer_lines(stops, tour_name)
+  local out = {
+    string.format("# codetour ─ tour: %s  ·  %d stop(s)", tour_name or "default", #stops),
+    "# <CR> jump   •   :w apply   •   q close",
+    "",
+  }
+  for _, line in ipairs(M.render(stops)) do
+    table.insert(out, line)
+  end
+  return out
+end
+
+---Find the buffer line number (1-based) of the first stop entry, skipping
+---past the `#` header and any blank lines. Returns nil if no stops.
+---@param buf_lines string[]
+---@return integer?
+function M._first_stop_lineno(buf_lines)
+  for lineno, line in ipairs(buf_lines) do
+    if line:match "^%[" then
+      return lineno
+    end
+  end
+  return nil
 end
 
 ---Reset M._state and restore the previous window if it's still valid.
@@ -241,7 +271,13 @@ local function on_save()
     return
   end
   local state = require "codetour.state"
-  vim.api.nvim_buf_set_lines(M._state.list_bufnr, 0, -1, false, M.render(state.data.stops))
+  vim.api.nvim_buf_set_lines(
+    M._state.list_bufnr,
+    0,
+    -1,
+    false,
+    M._build_buffer_lines(state.data.stops, state.data.active_tour)
+  )
   vim.bo[M._state.list_bufnr].modified = false
   update_preview()
 end
@@ -296,7 +332,11 @@ function M.open()
   vim.bo[list_bufnr].filetype = "codetour"
   pcall(vim.api.nvim_buf_set_name, list_bufnr, "codetour://" .. state.data.active_tour)
 
-  local lines = M.render(state.data.stops)
+  -- Header is written as `#` comment lines, which the parser skips. Putting
+  -- the header inside the buffer (rather than via virt_lines_above) sidesteps
+  -- nvim's "no display row above row 0" rendering quirk and lets the user
+  -- copy/paste the help text out if they want.
+  local lines = M._build_buffer_lines(state.data.stops, state.data.active_tour)
   vim.api.nvim_buf_set_lines(list_bufnr, 0, -1, false, lines)
   vim.bo[list_bufnr].modified = false
 
@@ -322,8 +362,10 @@ function M.open()
   pcall(vim.api.nvim_win_set_width, M._state.list_winid, math.floor(vim.o.columns * 0.25))
 
   vim.api.nvim_set_current_win(M._state.list_winid)
-  if #lines > 0 then
-    pcall(vim.api.nvim_win_set_cursor, M._state.list_winid, { 1, 0 })
+  -- Move cursor to the first stop line (skip past the header comments).
+  local first_stop_lineno = M._first_stop_lineno(lines)
+  if first_stop_lineno then
+    pcall(vim.api.nvim_win_set_cursor, M._state.list_winid, { first_stop_lineno, 0 })
   end
 
   M._state.augroup = vim.api.nvim_create_augroup("codetour_edit", { clear = true })

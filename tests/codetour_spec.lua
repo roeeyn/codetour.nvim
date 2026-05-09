@@ -551,6 +551,32 @@ describe("codetour.edit", function()
     assert.equals(2, parsed[3].idx)
   end)
 
+  it("parse() skips header comment lines (those starting with #)", function()
+    local lines = {
+      "# codetour ─ tour: auth  ·  2 stop(s)",
+      "# <CR> jump  •  :w apply  •  q close",
+      "",
+      "[1]  foo.lua:10  ─  first",
+      "[2]  bar.lua:25  ─  second",
+    }
+    local parsed, err = edit.parse(lines)
+    assert.is_nil(err)
+    assert.equals(2, #parsed)
+    assert.equals("first", parsed[1].note)
+    assert.equals("second", parsed[2].note)
+  end)
+
+  it("_first_stop_lineno skips past the header to the first stop", function()
+    local lines = {
+      "# codetour ─ tour: auth  ·  2 stop(s)",
+      "# <CR> jump  •  :w apply  •  q close",
+      "",
+      "[1]  foo.lua:10  ─  first",
+      "[2]  bar.lua:25  ─  second",
+    }
+    assert.equals(4, edit._first_stop_lineno(lines))
+  end)
+
   it("parse() skips blank lines", function()
     local lines = {
       "[1]  foo.lua:10  ─  first",
