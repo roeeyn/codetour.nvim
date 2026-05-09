@@ -73,6 +73,8 @@ Quit Neovim and reopen — the tour is still there.
 | `:TourOpen` | Populate the quickfix list with the active tour, jump to stop 1 |
 | `:TourClose` | Restore the quickfix list that was active before `:TourOpen` |
 | `:TourList` | Open a picker over the active tour's stops; `<CR>` jumps |
+| `:TourNextStop` | Jump cursor to the next stop in the **current buffer** (by line). Pure cursor movement; no qf side effects |
+| `:TourPrevStop` | Jump cursor to the previous stop in the current buffer |
 | **Display** | |
 | `:TourNotesVirtualTextToggle` | Hide / show all virtual-text notes |
 | `:TourDump` | Print the in-memory state to `:messages` (debug aid) |

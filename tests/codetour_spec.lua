@@ -1225,6 +1225,126 @@ describe("codetour.state", function()
     assert.equals("second", items[1].text)
   end)
 
+  it("next_stop_in_buf() moves cursor down to next stop by lnum", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d", "e", "f" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    -- Three stops at lines 5, 2, 4 — added in non-sorted order to verify
+    -- next_stop_in_buf sorts by lnum, not by stop index.
+    vim.api.nvim_win_set_cursor(0, { 5, 0 })
+    state.add "third by line"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "first by line"
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    state.add "second by line"
+
+    -- Sit on line 1; next should land on line 2 (the lowest-line stop)
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.next_stop_in_buf()
+    assert.equals(2, vim.api.nvim_win_get_cursor(0)[1])
+
+    -- Next from 2 → 4 (skipping over the cursor's current stop)
+    state.next_stop_in_buf()
+    assert.equals(4, vim.api.nvim_win_get_cursor(0)[1])
+
+    -- Next from 4 → 5
+    state.next_stop_in_buf()
+    assert.equals(5, vim.api.nvim_win_get_cursor(0)[1])
+
+    -- Next from 5 → no further stop, cursor stays
+    state.next_stop_in_buf()
+    assert.equals(5, vim.api.nvim_win_get_cursor(0)[1])
+  end)
+
+  it("prev_stop_in_buf() moves cursor up to previous stop by lnum", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d", "e", "f" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "first by line"
+    vim.api.nvim_win_set_cursor(0, { 5, 0 })
+    state.add "third by line"
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    state.add "second by line"
+
+    vim.api.nvim_win_set_cursor(0, { 6, 0 })
+    state.prev_stop_in_buf()
+    assert.equals(5, vim.api.nvim_win_get_cursor(0)[1])
+
+    state.prev_stop_in_buf()
+    assert.equals(4, vim.api.nvim_win_get_cursor(0)[1])
+
+    state.prev_stop_in_buf()
+    assert.equals(2, vim.api.nvim_win_get_cursor(0)[1])
+
+    -- No earlier stop; cursor stays
+    state.prev_stop_in_buf()
+    assert.equals(2, vim.api.nvim_win_get_cursor(0)[1])
+  end)
+
+  it("next/prev_stop_in_buf() ignore stops in other files", function()
+    local fileA = vim.fn.tempname() .. "_a.lua"
+    local fileB = vim.fn.tempname() .. "_b.lua"
+    vim.fn.writefile({ "a1", "a2", "a3" }, fileA)
+    vim.fn.writefile({ "b1", "b2", "b3" }, fileB)
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+
+    vim.cmd("e " .. vim.fn.fnameescape(fileA))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "in A"
+
+    vim.cmd("e " .. vim.fn.fnameescape(fileB))
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "in B"
+
+    -- Now in fileB, line 1. next/prev should be no-ops since there's only
+    -- one stop in this file (and we're sitting on it).
+    state.next_stop_in_buf()
+    assert.equals(1, vim.api.nvim_win_get_cursor(0)[1])
+    state.prev_stop_in_buf()
+    assert.equals(1, vim.api.nvim_win_get_cursor(0)[1])
+  end)
+
+  it("next_stop_in_buf() does not modify state, qf, or trigger save", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "one"
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "two"
+
+    -- Set up an active tour qf with a known idx
+    vim.fn.setqflist({}, " ", {
+      title = "tour:test",
+      items = { { filename = tmp, lnum = 1 }, { filename = tmp, lnum = 3 } },
+    })
+    vim.fn.setqflist({}, "r", { nr = 0, idx = 2 })
+    local before_idx = vim.fn.getqflist({ idx = 0 }).idx
+    local before_stops = vim.deepcopy(state.data.stops)
+
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.next_stop_in_buf() -- moves cursor to line 3
+
+    -- qf idx untouched
+    assert.equals(before_idx, vim.fn.getqflist({ idx = 0 }).idx)
+    -- stops list untouched
+    assert.same(before_stops, state.data.stops)
+  end)
+
   it("edit_note() leaves a non-tour quickfix list alone", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "line 1" }, tmp)

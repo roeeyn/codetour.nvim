@@ -115,6 +115,17 @@ function M.dump()
   state.dump()
 end
 
+---Move cursor to the next stop *in the current buffer*, sorted by line.
+---Pure cursor movement; no qf side effects, no state mutation.
+function M.next_stop_in_buf()
+  state.next_stop_in_buf()
+end
+
+---Move cursor to the previous stop *in the current buffer*, sorted by line.
+function M.prev_stop_in_buf()
+  state.prev_stop_in_buf()
+end
+
 ---@param text string New note text for the stop nearest the cursor
 function M.edit_note(text)
   state.edit_note(text)

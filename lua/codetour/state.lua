@@ -352,6 +352,75 @@ function M.dump()
   })
 end
 
+---Find the stop in the current buffer with the smallest lnum strictly above
+---(or below) the cursor. Sort is by lnum, NOT by stop index — so "next" is
+---the next stop *down the file*, regardless of whether it's stop #1 or #5.
+---@param stops CodeTour.Stop[]
+---@param direction "next"|"prev"
+---@return CodeTour.Stop?
+local function adjacent_stop_in_buf(stops, direction)
+  local util = require "codetour.util"
+  local current_path = util.canonical(vim.api.nvim_buf_get_name(0))
+  if current_path == nil then
+    return nil
+  end
+
+  local cursor_lnum = vim.api.nvim_win_get_cursor(0)[1]
+
+  local in_buf = {}
+  for _, stop in ipairs(stops) do
+    if util.canonical(stop.file) == current_path then
+      table.insert(in_buf, stop)
+    end
+  end
+  if #in_buf == 0 then
+    return nil
+  end
+
+  table.sort(in_buf, function(a, b)
+    return (a.lnum or 1) < (b.lnum or 1)
+  end)
+
+  if direction == "next" then
+    for _, stop in ipairs(in_buf) do
+      if (stop.lnum or 1) > cursor_lnum then
+        return stop
+      end
+    end
+  else -- "prev"
+    for i = #in_buf, 1, -1 do
+      if (in_buf[i].lnum or 1) < cursor_lnum then
+        return in_buf[i]
+      end
+    end
+  end
+  return nil
+end
+
+---Move cursor to the next stop *in the current buffer*, sorted by line
+---number ascending. No-op when there is no stop further down. Pure cursor
+---movement: no qf changes, no state mutation, no save.
+function M.next_stop_in_buf()
+  M.ensure_loaded()
+  local stop = adjacent_stop_in_buf(M.data.stops, "next")
+  if stop ~= nil then
+    pcall(vim.api.nvim_win_set_cursor, 0, { stop.lnum or 1, stop.col or 0 })
+    vim.cmd "normal! zz"
+  end
+end
+
+---Move cursor to the previous stop *in the current buffer*, sorted by line
+---number ascending. No-op when there is no stop further up. Pure cursor
+---movement.
+function M.prev_stop_in_buf()
+  M.ensure_loaded()
+  local stop = adjacent_stop_in_buf(M.data.stops, "prev")
+  if stop ~= nil then
+    pcall(vim.api.nvim_win_set_cursor, 0, { stop.lnum or 1, stop.col or 0 })
+    vim.cmd "normal! zz"
+  end
+end
+
 ---@return string[] tour names available in storage
 function M.list_tours()
   M.ensure_loaded()

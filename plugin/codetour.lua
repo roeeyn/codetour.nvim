@@ -99,6 +99,14 @@ vim.api.nvim_create_user_command("TourList", function()
   require("codetour").list()
 end, { desc = "codetour: open a picker over stops in the active tour" })
 
+vim.api.nvim_create_user_command("TourNextStop", function()
+  require("codetour").next_stop_in_buf()
+end, { desc = "codetour: move cursor to next stop in current buffer (by line, not index)" })
+
+vim.api.nvim_create_user_command("TourPrevStop", function()
+  require("codetour").prev_stop_in_buf()
+end, { desc = "codetour: move cursor to previous stop in current buffer (by line, not index)" })
+
 vim.api.nvim_create_user_command("TourDump", function()
   require("codetour").dump()
 end, { desc = "codetour: print state for debugging" })
