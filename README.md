@@ -241,3 +241,5 @@ Bypass with `git commit --no-verify` when you really need to.
 - Lualine component showing the active tour name + stop count
   (e.g. `tour: auth-flow [2/5]`). Possibly skip — the qf cwindow already
   surfaces this when open.
+
+- Make sure that the tour add operations only apply if a tour is active
