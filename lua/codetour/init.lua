@@ -115,6 +115,13 @@ function M.dump()
   state.dump()
 end
 
+---Open the oil-style editable buffer for the active tour.
+---:w applies (parse + replace_stops); <CR> jumps to the stop under cursor;
+---q closes without saving.
+function M.edit()
+  require("codetour.edit").open()
+end
+
 ---Move cursor to the next stop *in the current buffer*, sorted by line.
 ---Pure cursor movement; no qf side effects, no state mutation.
 function M.next_stop_in_buf()

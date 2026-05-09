@@ -650,6 +650,40 @@ describe("codetour.edit", function()
     assert.equals("rewritten", state.data.stops[1].note)
   end)
 
+  it("open() warns and bails when there is no active tour", function()
+    local original = vim.notify
+    local captured
+    vim.notify = function(msg, level)
+      captured = { msg = msg, level = level }
+    end
+    edit.open()
+    vim.notify = original
+    assert.is_truthy(captured.msg:match "no active tour")
+    -- No list/preview windows created
+    assert.is_nil(edit._state.list_winid)
+  end)
+
+  it("open() then close() leaves no leftover windows or buffers", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "smoke"
+
+    edit.open()
+    assert.is_not_nil(edit._state.list_winid)
+    assert.is_not_nil(edit._state.preview_winid)
+    local list_buf = edit._state.list_bufnr
+
+    edit.close()
+    -- After close: state cleared
+    assert.is_nil(edit._state.list_winid)
+    assert.is_nil(edit._state.list_bufnr)
+    -- And the list buffer is wiped
+    assert.is_false(vim.api.nvim_buf_is_valid(list_buf))
+  end)
+
   it("commit() short-circuits on parse error before mutating state", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a", "b" }, tmp)
