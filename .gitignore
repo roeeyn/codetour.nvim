@@ -8,3 +8,7 @@
 # users in their own repos should NOT add this rule unless they want
 # tours private to their clone.
 .codetour/
+
+# Reference dumps from external tools (e.g. Repomix bundles of other plugins)
+# that we keep locally for cross-plugin research; not source.
+repomix-output.xml

@@ -479,6 +479,192 @@ describe("codetour.notes", function()
   end)
 end)
 
+describe("codetour.edit", function()
+  local edit
+  local original_cwd
+  local repo
+
+  before_each(function()
+    original_cwd = vim.fn.getcwd()
+    repo = tmpdir()
+    init_git_repo(repo)
+    vim.cmd("cd " .. vim.fn.fnameescape(repo))
+    package.loaded["codetour.edit"] = nil
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.anchor"] = nil
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.signs"] = nil
+    edit = require "codetour.edit"
+  end)
+  after_each(function()
+    vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
+  end)
+
+  it("render() formats stops with the [N] file:lnum ─ note shape", function()
+    local stops = {
+      { file = "/abs/foo.lua", lnum = 10, col = 0, note = "entry", context = "" },
+      { file = "/abs/bar.lua", lnum = 25, col = 0, note = "dispatch", context = "" },
+    }
+    local lines = edit.render(stops)
+    assert.equals(2, #lines)
+    assert.is_truthy(lines[1]:match "^%[1%]")
+    assert.is_truthy(lines[1]:match "foo%.lua:10")
+    assert.is_truthy(lines[1]:match "─%s+entry$")
+    assert.is_truthy(lines[2]:match "^%[2%]")
+    assert.is_truthy(lines[2]:match "─%s+dispatch$")
+  end)
+
+  it("parse() round-trips a render() output", function()
+    local stops = {
+      { file = "/abs/foo.lua", lnum = 10, col = 0, note = "entry", context = "" },
+      { file = "/abs/bar.lua", lnum = 25, col = 0, note = "dispatch handler", context = "" },
+    }
+    local parsed, err = edit.parse(edit.render(stops))
+    assert.is_nil(err)
+    assert.equals(2, #parsed)
+    assert.equals(1, parsed[1].idx)
+    assert.equals("entry", parsed[1].note)
+    assert.equals(2, parsed[2].idx)
+    assert.equals("dispatch handler", parsed[2].note)
+  end)
+
+  it("parse() captures edited notes", function()
+    local lines = {
+      "[1]  foo.lua:10  ─  rewritten note text",
+      "[2]  bar.lua:25  ─  another rewrite",
+    }
+    local parsed = edit.parse(lines)
+    assert.equals("rewritten note text", parsed[1].note)
+    assert.equals("another rewrite", parsed[2].note)
+  end)
+
+  it("parse() captures reordering by reading lines in order", function()
+    local lines = {
+      "[3]  c.lua:1  ─  third",
+      "[1]  a.lua:1  ─  first",
+      "[2]  b.lua:1  ─  second",
+    }
+    local parsed = edit.parse(lines)
+    -- Order in parsed = order in buffer = new tour order
+    assert.equals(3, parsed[1].idx)
+    assert.equals(1, parsed[2].idx)
+    assert.equals(2, parsed[3].idx)
+  end)
+
+  it("parse() skips blank lines", function()
+    local lines = {
+      "[1]  foo.lua:10  ─  first",
+      "",
+      "  ",
+      "[2]  bar.lua:25  ─  second",
+    }
+    local parsed = edit.parse(lines)
+    assert.equals(2, #parsed)
+  end)
+
+  it("parse() returns an error for malformed lines", function()
+    local lines = {
+      "[1]  foo.lua:10  ─  first",
+      "this is not a valid stop line",
+      "[2]  bar.lua:25  ─  second",
+    }
+    local parsed, err = edit.parse(lines)
+    assert.is_nil(parsed)
+    assert.is_truthy(err:match "line 2"):match "malformed"
+  end)
+
+  it("apply() refuses when the same stop appears twice", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "first"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "second"
+
+    local ok, err = edit.apply { { idx = 1, note = "x" }, { idx = 1, note = "y" } }
+    assert.is_false(ok)
+    assert.is_truthy(err:match "more than once")
+    -- State unchanged
+    assert.equals(2, #state.data.stops)
+    assert.equals("first", state.data.stops[1].note)
+  end)
+
+  it("apply() refuses when an index doesn't exist", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "only"
+
+    local ok, err = edit.apply { { idx = 99, note = "x" } }
+    assert.is_false(ok)
+    assert.is_truthy(err:match "doesn't exist")
+    assert.equals(1, #state.data.stops)
+  end)
+
+  it("apply() reorders, edits notes, and removes stops atomically", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "alpha"
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "beta"
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "gamma"
+
+    -- Reorder (3 → 1 → 2), edit beta's note, drop nothing
+    local ok = edit.apply {
+      { idx = 3, note = "GAMMA edited" },
+      { idx = 1, note = "alpha" },
+      { idx = 2, note = "BETA edited" },
+    }
+    assert.is_true(ok)
+    assert.equals(3, #state.data.stops)
+    assert.equals("GAMMA edited", state.data.stops[1].note)
+    assert.equals("alpha", state.data.stops[2].note)
+    assert.equals("BETA edited", state.data.stops[3].note)
+  end)
+
+  it("apply() preserves file/lnum/col/context (only note is editable)", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "original"
+
+    local original_file = state.data.stops[1].file
+    local original_lnum = state.data.stops[1].lnum
+    local original_context = state.data.stops[1].context
+
+    edit.apply { { idx = 1, note = "rewritten" } }
+
+    assert.equals(original_file, state.data.stops[1].file)
+    assert.equals(original_lnum, state.data.stops[1].lnum)
+    assert.equals(original_context, state.data.stops[1].context)
+    assert.equals("rewritten", state.data.stops[1].note)
+  end)
+
+  it("commit() short-circuits on parse error before mutating state", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "untouched"
+
+    local ok, err = edit.commit { "not-a-valid-line" }
+    assert.is_false(ok)
+    assert.is_truthy(err)
+    assert.equals("untouched", state.data.stops[1].note)
+  end)
+end)
+
 describe("codetour.signs", function()
   local signs
   local anchor

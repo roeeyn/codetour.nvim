@@ -397,6 +397,42 @@ local function adjacent_stop_in_buf(stops, direction)
   return nil
 end
 
+---Atomic "swap the entire stops list" — used by :TourEdit's apply path.
+---Drops every extmark / note / sign, replaces stops, re-attaches across
+---all loaded buffers, syncs qf, and saves. The caller is expected to have
+---already validated the new list (e.g. via edit.parse + edit.apply).
+---@param new_stops CodeTour.Stop[]
+function M.replace_stops(new_stops)
+  M.ensure_loaded()
+  if M.data.active_tour == nil then
+    log.warn "codetour: no active tour to replace stops in"
+    return
+  end
+
+  local anchor = require "codetour.anchor"
+  local notes = require "codetour.notes"
+  local signs = require "codetour.signs"
+  anchor.detach_all()
+  notes.detach_all()
+  signs.detach_all()
+
+  M.data.stops = new_stops
+
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      anchor.attach(bufnr, M.data.stops)
+      notes.refresh(bufnr, M.data.stops, M.data.active_tour)
+      signs.refresh(bufnr, M.data.stops)
+    end
+  end
+
+  local qf = require "codetour.qf"
+  qf.update_if_tour_active(M.data.stops)
+
+  save()
+  log.info(string.format("codetour: tour updated (%d stops)", #M.data.stops))
+end
+
 ---Move cursor to the next stop *in the current buffer*, sorted by line
 ---number ascending. Reports an error when there is no stop further down
 ---(matches vim's E553 "No more items" idiom for :cnext at the end of qf).
