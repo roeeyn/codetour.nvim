@@ -1290,6 +1290,59 @@ describe("codetour.state", function()
     assert.equals(2, vim.api.nvim_win_get_cursor(0)[1])
   end)
 
+  it("next_stop_in_buf() reports an error when there is no next stop", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "only stop"
+
+    local captured
+    local original_notify = vim.notify
+    vim.notify = function(msg, level)
+      captured = { msg = msg, level = level }
+    end
+
+    -- Cursor is past the only stop → no next
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.next_stop_in_buf()
+
+    vim.notify = original_notify
+
+    assert.is_not_nil(captured, "expected an error notify")
+    assert.is_truthy(captured.msg:match "no next stop", "got: " .. tostring(captured.msg))
+    assert.equals(vim.log.levels.ERROR, captured.level)
+  end)
+
+  it("prev_stop_in_buf() reports an error when there is no previous stop", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+
+    package.loaded["codetour.state"] = nil
+    state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 3, 0 })
+    state.add "only stop"
+
+    local captured
+    local original_notify = vim.notify
+    vim.notify = function(msg, level)
+      captured = { msg = msg, level = level }
+    end
+
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.prev_stop_in_buf()
+
+    vim.notify = original_notify
+
+    assert.is_not_nil(captured)
+    assert.is_truthy(captured.msg:match "no previous stop")
+    assert.equals(vim.log.levels.ERROR, captured.level)
+  end)
+
   it("next/prev_stop_in_buf() ignore stops in other files", function()
     local fileA = vim.fn.tempname() .. "_a.lua"
     local fileB = vim.fn.tempname() .. "_b.lua"

@@ -398,27 +398,32 @@ local function adjacent_stop_in_buf(stops, direction)
 end
 
 ---Move cursor to the next stop *in the current buffer*, sorted by line
----number ascending. No-op when there is no stop further down. Pure cursor
----movement: no qf changes, no state mutation, no save.
+---number ascending. Reports an error when there is no stop further down
+---(matches vim's E553 "No more items" idiom for :cnext at the end of qf).
+---Pure cursor movement: no qf changes, no state mutation, no save.
 function M.next_stop_in_buf()
   M.ensure_loaded()
   local stop = adjacent_stop_in_buf(M.data.stops, "next")
-  if stop ~= nil then
-    pcall(vim.api.nvim_win_set_cursor, 0, { stop.lnum or 1, stop.col or 0 })
-    vim.cmd "normal! zz"
+  if stop == nil then
+    log.error "codetour: no next stop in this buffer"
+    return
   end
+  pcall(vim.api.nvim_win_set_cursor, 0, { stop.lnum or 1, stop.col or 0 })
+  vim.cmd "normal! zz"
 end
 
 ---Move cursor to the previous stop *in the current buffer*, sorted by line
----number ascending. No-op when there is no stop further up. Pure cursor
----movement.
+---number ascending. Reports an error when there is no stop further up.
+---Pure cursor movement.
 function M.prev_stop_in_buf()
   M.ensure_loaded()
   local stop = adjacent_stop_in_buf(M.data.stops, "prev")
-  if stop ~= nil then
-    pcall(vim.api.nvim_win_set_cursor, 0, { stop.lnum or 1, stop.col or 0 })
-    vim.cmd "normal! zz"
+  if stop == nil then
+    log.error "codetour: no previous stop in this buffer"
+    return
   end
+  pcall(vim.api.nvim_win_set_cursor, 0, { stop.lnum or 1, stop.col or 0 })
+  vim.cmd "normal! zz"
 end
 
 ---@return string[] tour names available in storage
