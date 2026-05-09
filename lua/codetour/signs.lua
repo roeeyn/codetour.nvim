@@ -5,20 +5,28 @@ local NAMESPACE = vim.api.nvim_create_namespace "codetour_signs"
 -- bufnr -> { [idx] = sign_extmark_id }
 M._buf_signs = {}
 
----Compute the sign text for a stop. Defaults to its 1-based index (1-99
----fit in 2 chars; >99 collapses to "+").
+---Compute the sign text for a stop.
+---Layered: signs.text override > prefix + single-digit index > index alone.
+---Sign-column hard-limits to 2 cells, so the prefix only applies when the
+---index is single-digit (1-9). Indices 10+ render as the bare number;
+---indices 100+ collapse to "+".
 ---@param idx integer 1-based stop index in the active tour
 ---@return string
 local function sign_text_for(idx)
   local config = require "codetour.config"
-  local fixed = config.opts.signs and config.opts.signs.text
-  if fixed and fixed ~= "" then
-    return fixed
+  local opts = config.opts.signs or {}
+
+  if opts.text and opts.text ~= "" then
+    return opts.text
   end
-  if idx >= 100 then
-    return "+"
+
+  local index_str = (idx >= 100) and "+" or tostring(idx)
+
+  if opts.prefix and opts.prefix ~= "" and #index_str == 1 then
+    return opts.prefix .. index_str
   end
-  return tostring(idx)
+
+  return index_str
 end
 
 local function set_sign(bufnr, idx, row)

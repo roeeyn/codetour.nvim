@@ -509,19 +509,54 @@ describe("codetour.signs", function()
       { file = file, lnum = 1, col = 0, note = "", context = "" },
       { file = file, lnum = 3, col = 0, note = "", context = "" },
     }
+    -- Disable prefix for this test so we assert on the raw index.
+    -- (merge with nil is a no-op due to tbl_deep_extend semantics; "" is the
+    -- in-band signal for "no prefix" in sign_text_for.)
+    require("codetour.config").merge { signs = { prefix = "" } }
     anchor.attach(bufnr, stops)
     signs.refresh(bufnr, stops)
 
     local NS = vim.api.nvim_create_namespace "codetour_signs"
     local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
     assert.equals(2, #marks)
-    -- Read sign_text per row
     local at = {}
     for _, m in ipairs(marks) do
       at[m[2]] = m[4].sign_text
     end
-    assert.is_truthy(at[0]:match "1") -- stop 1 → "1"
-    assert.is_truthy(at[2]:match "2") -- stop 2 → "2"
+    assert.equals("1", (at[0]:gsub("%s", "")))
+    assert.equals("2", (at[2]:gsub("%s", ""))) -- parens drop gsub's count return
+  end)
+
+  it("refresh() prepends signs.prefix for single-digit indices", function()
+    local bufnr, file = buffer_with_lines { "a", "b" }
+    local stops = { { file = file, lnum = 1, col = 0, note = "", context = "" } }
+    require("codetour.config").merge { signs = { prefix = "▸" } }
+    anchor.attach(bufnr, stops)
+    signs.refresh(bufnr, stops)
+
+    local NS = vim.api.nvim_create_namespace "codetour_signs"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.equals("▸1", (marks[1][4].sign_text:gsub("%s", "")))
+    require("codetour.config").merge { signs = { prefix = "" } }
+  end)
+
+  it("refresh() drops the prefix for two-digit indices (sign_text is 2-cell capped)", function()
+    -- Make a stop list with 10 entries; only the 10th is in this buffer
+    local bufnr, file = buffer_with_lines { "x" }
+    local stops = {}
+    for i = 1, 9 do
+      table.insert(stops, { file = "/nowhere", lnum = i, col = 0, note = "", context = "" })
+    end
+    table.insert(stops, { file = file, lnum = 1, col = 0, note = "", context = "" })
+
+    require("codetour.config").merge { signs = { prefix = "▸" } }
+    anchor.attach(bufnr, stops)
+    signs.refresh(bufnr, stops)
+
+    local NS = vim.api.nvim_create_namespace "codetour_signs"
+    local marks = vim.api.nvim_buf_get_extmarks(bufnr, NS, 0, -1, { details = true })
+    assert.equals("10", (marks[1][4].sign_text:gsub("%s", "")))
+    require("codetour.config").merge { signs = { prefix = "" } }
   end)
 
   it("refresh() honours the configured fixed text override", function()

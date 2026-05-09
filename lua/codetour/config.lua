@@ -2,7 +2,8 @@ local M = {}
 
 ---@class CodeTour.SignsOpts
 ---@field enabled? boolean Render a sign in the gutter at each stop's line (default: true)
----@field text? string? If set, use this fixed string for every stop's sign. If nil, use the stop's index (e.g. "1", "2"). Max 2 characters.
+---@field text? string? If set, use this fixed string for every stop's sign. If nil, use the stop's index. Max 2 cells.
+---@field prefix? string? 1-cell glyph prepended to the index (e.g. "󰽪" = nerd-font bow). Only applied when index is single-digit (1-9). Set to nil to disable.
 ---@field highlight? string Highlight group to link CodetourSign to (default: "Special")
 
 ---@class CodeTour.Opts
@@ -25,6 +26,11 @@ M.defaults = {
   signs = {
     enabled = true,
     text = nil, -- nil = use the stop's 1-based index (1, 2, ...); set a string for a fixed marker like "●"
+    -- 1-cell prefix prepended to the index (only for single-digit indices, since
+    -- sign_text is capped at 2 cells). Default is the Nerd Font bow-and-arrow
+    -- glyph `nf-md-bow_arrow` (U+F0F6A). If you don't have a Nerd Font, override
+    -- to a plain unicode arrow like "▸" or set to nil to disable the prefix.
+    prefix = "󰽪",
     highlight = "Special", -- linked via CodetourSign with default = true
   },
 }
