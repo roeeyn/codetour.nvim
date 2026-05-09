@@ -109,13 +109,13 @@ require("codetour").setup({
   storage_path = ".codetour",
 
   -- Sign-column markers at each stop's line. Each sign shows a 1-cell
-  -- prefix glyph followed by the stop's index (e.g. "󰽪1", "󰽪2", ...).
+  -- prefix glyph followed by the stop's index (e.g. "󰈻1", "󰈻2", ...).
   -- Sign-column is hard-capped at 2 cells, so the prefix only renders for
   -- single-digit indices (1-9); 10+ falls back to the bare number.
   signs = {
     enabled = true,
     text = nil,           -- nil = use the prefix+index logic below; set to a fixed string ("●") to override
-    prefix = "󰽪",         -- nf-md-bow_arrow (Nerd Font). Use "▸" if you don't have a Nerd Font, or "" to disable.
+    prefix = "󰈻",         -- nf-md-flag (Nerd Font). Use "▸" if you don't have a Nerd Font, or "" to disable.
     highlight = "Special",
   },
 })

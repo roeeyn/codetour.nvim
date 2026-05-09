@@ -27,10 +27,11 @@ M.defaults = {
     enabled = true,
     text = nil, -- nil = use the stop's 1-based index (1, 2, ...); set a string for a fixed marker like "●"
     -- 1-cell prefix prepended to the index (only for single-digit indices, since
-    -- sign_text is capped at 2 cells). Default is the Nerd Font bow-and-arrow
-    -- glyph `nf-md-bow_arrow` (U+F0F6A). If you don't have a Nerd Font, override
-    -- to a plain unicode arrow like "▸" or set to nil to disable the prefix.
-    prefix = "󰽪",
+    -- sign_text is capped at 2 cells). Default is the Nerd Font flag glyph
+    -- `nf-md-flag` (U+F023B) — thematic "destination/waypoint" marker.
+    -- If you don't have a Nerd Font, override to a plain unicode arrow like
+    -- "▸" or set to "" to disable the prefix.
+    prefix = "󰈻",
     highlight = "Special", -- linked via CodetourSign with default = true
   },
 }
