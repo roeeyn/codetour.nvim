@@ -3,10 +3,19 @@ local M = {}
 local NAMESPACE = vim.api.nvim_create_namespace "codetour"
 local SEARCH_RADIUS = 20
 
--- bufnr -> { [idx_in_active_tour.stops] = extmark_id }
--- Module-local because the map's lifetime is the session, and only this module
--- ever needs to read or write it.
+-- bufnr -> { [stop.id] = extmark_id }
+-- Keyed by stable stop.id so that removing one stop doesn't invalidate the
+-- positions of every other stop. Production stops always carry an id
+-- (Tour.add_stop assigns one); manually-constructed stops in tests that
+-- bypass Tour may not — for those we fall back to the array idx as the key.
+-- Module-local because the map's lifetime is the session.
 M._buf_extmarks = {}
+
+---Stable key for tracking a stop in this module's maps. Stop.id if present,
+---falling back to the array idx for ad-hoc test stops that bypass Tour.
+local function stop_key(stop, idx)
+  return stop.id or idx
+end
 
 local function buf_path(bufnr)
   local util = require "codetour.util"
@@ -76,12 +85,13 @@ function M.attach(bufnr, stops)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   for idx, stop in ipairs(stops) do
     local util = require "codetour.util"
-    if M._buf_extmarks[bufnr][idx] == nil and util.canonical(stop.file) == path then
+    local key = stop_key(stop, idx)
+    if M._buf_extmarks[bufnr][key] == nil and util.canonical(stop.file) == path then
       local original_lnum = stop.lnum or 1
       local row, drifted = find_anchor_row(bufnr, original_lnum, stop.context, line_count)
       local col = math.max(0, stop.col or 0)
       local id = vim.api.nvim_buf_set_extmark(bufnr, NAMESPACE, row, col, {})
-      M._buf_extmarks[bufnr][idx] = id
+      M._buf_extmarks[bufnr][key] = id
       if drifted then
         stop.lnum = row + 1
         stop.col = 0 -- column meaning is unclear after drift; reset to start of line
@@ -98,19 +108,21 @@ end
 ---@param stops CodeTour.Stop[]
 function M.refresh(stops)
   local util = require "codetour.util"
+  local by_key = {}
+  for idx, s in ipairs(stops) do
+    by_key[stop_key(s, idx)] = s
+  end
   for bufnr, marks in pairs(M._buf_extmarks) do
     if vim.api.nvim_buf_is_valid(bufnr) then
-      for idx, id in pairs(marks) do
-        local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, NAMESPACE, id, {})
-        if pos and pos[1] then
-          local stop = stops[idx]
-          if stop then
-            stop.lnum = pos[1] + 1
-            stop.col = pos[2]
-            local lines = vim.api.nvim_buf_get_lines(bufnr, pos[1], pos[1] + 1, false)
-            if lines and lines[1] then
-              stop.context = util.trim_context(lines[1])
-            end
+      for key, ext_id in pairs(marks) do
+        local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, NAMESPACE, ext_id, {})
+        local stop = by_key[key]
+        if pos and pos[1] and stop then
+          stop.lnum = pos[1] + 1
+          stop.col = pos[2]
+          local lines = vim.api.nvim_buf_get_lines(bufnr, pos[1], pos[1] + 1, false)
+          if lines and lines[1] then
+            stop.context = util.trim_context(lines[1])
           end
         end
       end
@@ -120,17 +132,16 @@ end
 
 ---Returns the 0-indexed row where this stop's extmark currently lives, or nil
 ---if the stop isn't tracked in this buffer (or the buffer is invalid).
----Used by notes.lua to render virt_lines at the stop's live position.
 ---@param bufnr integer
----@param idx integer
+---@param stop_id integer Stable stop.id
 ---@return integer? row 0-indexed
-function M.row_of(bufnr, idx)
+function M.row_of(bufnr, stop_id)
   bufnr = require("codetour.util").actual_bufnr(bufnr)
   local marks = M._buf_extmarks[bufnr]
   if marks == nil then
     return nil
   end
-  local id = marks[idx]
+  local id = marks[stop_id]
   if id == nil then
     return nil
   end
@@ -139,6 +150,21 @@ function M.row_of(bufnr, idx)
   end
   local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, NAMESPACE, id, {})
   return pos and pos[1] or nil
+end
+
+---Drop the extmark for one specific stop across every buffer that tracked it.
+---Used when removing a single stop without rebuilding the rest.
+---@param stop_id integer
+function M.detach_stop(stop_id)
+  for bufnr, marks in pairs(M._buf_extmarks) do
+    local ext_id = marks[stop_id]
+    if ext_id ~= nil then
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        pcall(vim.api.nvim_buf_del_extmark, bufnr, NAMESPACE, ext_id)
+      end
+      marks[stop_id] = nil
+    end
+  end
 end
 
 ---Drop the extmarks for one buffer (used when the buffer is being unloaded).
@@ -154,7 +180,6 @@ function M.detach(bufnr)
 end
 
 ---Drop every extmark this plugin has set across every buffer.
----Called by state.start() before resetting the stop list.
 function M.detach_all()
   for bufnr, _ in pairs(M._buf_extmarks) do
     if vim.api.nvim_buf_is_valid(bufnr) then

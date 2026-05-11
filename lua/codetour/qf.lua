@@ -26,8 +26,7 @@ function M.open()
 
   -- Pull the latest positions from extmarks before building qf items so
   -- the user lands on the actual current line, not the stale persisted one.
-  local anchor = require "codetour.anchor"
-  anchor.refresh(stops)
+  require("codetour.decoration").sync_positions(stops)
 
   -- Only snapshot the prior qf if we're not already in a tour.
   -- This makes :TourOpen idempotent: re-running it refreshes without losing the real prior list.

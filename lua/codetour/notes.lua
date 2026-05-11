@@ -2,8 +2,10 @@ local M = {}
 
 local NAMESPACE = vim.api.nvim_create_namespace "codetour_notes"
 
--- bufnr -> { [idx_in_active_tour.stops] = note_extmark_id }
--- Separate from anchor's extmark map: position and note are conceptually different layers.
+-- bufnr -> { [stop.id] = note_extmark_id }
+-- Keyed by stable stop.id so removing a stop doesn't invalidate every other
+-- stop's tracking. Separate from anchor's extmark map: position and note are
+-- conceptually different layers.
 M._buf_marks = {}
 
 -- Global visibility flag toggled by :TourNotesToggle.
@@ -33,7 +35,7 @@ local function format_prefix(idx, total, tour_name)
   return out
 end
 
-local function set_virt_lines(bufnr, idx, total, row, note, tour_name)
+local function set_virt_lines(bufnr, stop_id, idx, total, row, note, tour_name)
   local virt_lines = nil
   if note ~= nil and note ~= "" then
     -- Indent the note to match the line below so deeply-indented stops
@@ -46,7 +48,7 @@ local function set_virt_lines(bufnr, idx, total, row, note, tour_name)
   end
 
   M._buf_marks[bufnr] = M._buf_marks[bufnr] or {}
-  local existing = M._buf_marks[bufnr][idx]
+  local existing = M._buf_marks[bufnr][stop_id]
 
   -- virt_lines_above = true at row 0 silently fails to render: nvim has no
   -- display row "above line 1" to draw into. For that one edge case fall
@@ -64,7 +66,7 @@ local function set_virt_lines(bufnr, idx, total, row, note, tour_name)
   end
 
   local id = vim.api.nvim_buf_set_extmark(bufnr, NAMESPACE, row, 0, opts)
-  M._buf_marks[bufnr][idx] = id
+  M._buf_marks[bufnr][stop_id] = id
 end
 
 ---Render notes for any stops whose anchor is in this buffer.
@@ -93,9 +95,12 @@ function M.refresh(bufnr, stops, tour_name)
   local anchor = require "codetour.anchor"
   local total = #stops
   for idx, stop in ipairs(stops) do
-    local row = anchor.row_of(bufnr, idx)
+    -- Production stops always carry id (Tour.add_stop assigns); bypass-test
+    -- stops may not — fall back to idx so the key still works.
+    local key = stop.id or idx
+    local row = anchor.row_of(bufnr, key)
     if row ~= nil then
-      set_virt_lines(bufnr, idx, total, row, stop.note or "", tour_name)
+      set_virt_lines(bufnr, key, idx, total, row, stop.note or "", tour_name)
     end
   end
 end
@@ -128,8 +133,22 @@ function M.toggle(stops, tour_name)
   return M._visible
 end
 
+---Drop the note extmark for one specific stop, across every buffer.
+---Used when removing a single stop without rebuilding all the rest's notes.
+---@param stop_id integer
+function M.detach_stop(stop_id)
+  for bufnr, marks in pairs(M._buf_marks) do
+    local ext_id = marks[stop_id]
+    if ext_id ~= nil then
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        pcall(vim.api.nvim_buf_del_extmark, bufnr, NAMESPACE, ext_id)
+      end
+      marks[stop_id] = nil
+    end
+  end
+end
+
 ---Drop every note extmark across every buffer.
----Called by state.start() before resetting the stop list.
 function M.detach_all()
   for bufnr, _ in pairs(M._buf_marks) do
     if vim.api.nvim_buf_is_valid(bufnr) then

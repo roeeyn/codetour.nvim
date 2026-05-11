@@ -22,14 +22,7 @@ vim.api.nvim_create_autocmd("BufRead", {
   callback = function(args)
     local state = require "codetour.state"
     state.ensure_loaded()
-    local stops = state.stops()
-    local name = state.data.active_tour and state.data.active_tour.name or nil
-    local anchor = require "codetour.anchor"
-    anchor.attach(args.buf, stops)
-    local notes = require "codetour.notes"
-    notes.refresh(args.buf, stops, name)
-    local signs = require "codetour.signs"
-    signs.refresh(args.buf, stops)
+    require("codetour.decoration").attach_buffer(args.buf, state.data.active_tour)
   end,
 })
 

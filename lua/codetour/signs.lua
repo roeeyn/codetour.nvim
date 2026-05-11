@@ -2,7 +2,10 @@ local M = {}
 
 local NAMESPACE = vim.api.nvim_create_namespace "codetour_signs"
 
--- bufnr -> { [idx] = sign_extmark_id }
+-- bufnr -> { [stop.id] = sign_extmark_id }
+-- Keyed by stable stop.id; the visible sign text still reflects the stop's
+-- array idx (which can shift on remove), so the namespace is still
+-- clear-and-rebuilt on refresh.
 M._buf_signs = {}
 
 ---Compute the sign text for a stop.
@@ -29,9 +32,9 @@ local function sign_text_for(idx)
   return index_str
 end
 
-local function set_sign(bufnr, idx, row)
+local function set_sign(bufnr, stop_id, idx, row)
   M._buf_signs[bufnr] = M._buf_signs[bufnr] or {}
-  local existing = M._buf_signs[bufnr][idx]
+  local existing = M._buf_signs[bufnr][stop_id]
 
   local opts = {
     sign_text = sign_text_for(idx),
@@ -42,7 +45,7 @@ local function set_sign(bufnr, idx, row)
   end
 
   local id = vim.api.nvim_buf_set_extmark(bufnr, NAMESPACE, row, 0, opts)
-  M._buf_signs[bufnr][idx] = id
+  M._buf_signs[bufnr][stop_id] = id
 end
 
 ---Render signs for any stops anchored in this buffer.
@@ -67,10 +70,11 @@ function M.refresh(bufnr, stops)
   M._buf_signs[bufnr] = {}
 
   local anchor = require "codetour.anchor"
-  for idx, _ in ipairs(stops) do
-    local row = anchor.row_of(bufnr, idx)
+  for idx, stop in ipairs(stops) do
+    local key = stop.id or idx
+    local row = anchor.row_of(bufnr, key)
     if row ~= nil then
-      set_sign(bufnr, idx, row)
+      set_sign(bufnr, key, idx, row)
     end
   end
 end
@@ -81,6 +85,20 @@ function M.refresh_all(stops)
   local anchor = require "codetour.anchor"
   for bufnr, _ in pairs(anchor._buf_extmarks) do
     M.refresh(bufnr, stops)
+  end
+end
+
+---Drop the sign extmark for one specific stop, across every buffer.
+---@param stop_id integer
+function M.detach_stop(stop_id)
+  for bufnr, marks in pairs(M._buf_signs) do
+    local ext_id = marks[stop_id]
+    if ext_id ~= nil then
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        pcall(vim.api.nvim_buf_del_extmark, bufnr, NAMESPACE, ext_id)
+      end
+      marks[stop_id] = nil
+    end
   end
 end
 

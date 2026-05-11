@@ -1,5 +1,6 @@
 local storage = require "codetour.storage"
 local Tour = require "codetour.tour"
+local decoration = require "codetour.decoration"
 local log = require "codetour.log"
 local M = {}
 
@@ -36,8 +37,7 @@ local function save()
   if M.data.active_tour == nil then
     return
   end
-  local anchor = require "codetour.anchor"
-  anchor.refresh(M.data.active_tour.stops)
+  decoration.sync_positions(M.data.active_tour.stops)
   storage.save_tour(M.data.active_tour)
 end
 
@@ -73,33 +73,17 @@ local function require_active()
   return true
 end
 
----Drop extmarks/notes/signs across all loaded buffers and reset in-memory state.
+---Drop all buffer decoration and reset in-memory state.
 local function reset_in_memory()
-  local anchor = require "codetour.anchor"
-  local notes = require "codetour.notes"
-  local signs = require "codetour.signs"
-  anchor.detach_all()
-  notes.detach_all()
-  signs.detach_all()
+  decoration.detach_all()
   M.data.active_tour = nil
 end
 
----Re-attach anchors and re-render notes/signs across all loaded buffers, then sync qf.
+---Re-render decoration across all loaded buffers, then sync qf.
 local function rehydrate_all_buffers()
-  local anchor = require "codetour.anchor"
-  local notes = require "codetour.notes"
-  local signs = require "codetour.signs"
-  local stops = M.stops()
-  local name = M.data.active_tour and M.data.active_tour.name or nil
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(bufnr) then
-      anchor.attach(bufnr, stops)
-      notes.refresh(bufnr, stops, name)
-      signs.refresh(bufnr, stops)
-    end
-  end
+  decoration.refresh_all(M.data.active_tour)
   local qf = require "codetour.qf"
-  qf.update_if_tour_active(stops)
+  qf.update_if_tour_active(M.stops())
 end
 
 ---Create a new empty tour and make it active. Refuses if name already exists
@@ -222,8 +206,7 @@ function M.add(note)
 
   -- Refresh first so the dedupe check uses current extmark positions, not
   -- possibly-stale stored lnums (e.g. after editing in this session).
-  local anchor = require "codetour.anchor"
-  anchor.refresh(M.data.active_tour.stops)
+  decoration.sync_positions(M.data.active_tour.stops)
 
   local cursor = vim.api.nvim_win_get_cursor(0)
   local lnum, col = cursor[1], cursor[2]
@@ -249,11 +232,10 @@ function M.add(note)
     return
   end
 
-  anchor.attach(0, M.data.active_tour.stops)
-  local notes = require "codetour.notes"
-  notes.refresh_all(M.data.active_tour.stops, M.data.active_tour.name)
-  local signs = require "codetour.signs"
-  signs.refresh_all(M.data.active_tour.stops)
+  -- Adding a stop shifts (idx/total) for every existing stop's note + sign
+  -- (visible text depends on array position), so we still re-render across
+  -- every loaded buffer. Anchor extmarks are reused via stop.id keying.
+  decoration.refresh_all(M.data.active_tour)
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.active_tour.stops)
   save()
@@ -299,17 +281,18 @@ function M.edit_note(text)
     return
   end
 
-  local notes = require "codetour.notes"
-  notes.refresh(0, M.data.active_tour.stops, M.data.active_tour.name)
-  -- signs don't depend on note text, so no signs.refresh needed here
+  -- Only the note text changed for one stop. Re-render decoration for the
+  -- current buffer so that note shows the new text. Signs are unaffected
+  -- (sign_text depends on idx, not note), but the cost of going through
+  -- the facade is the same and keeps state.lua free of fan-out trios.
+  decoration.attach_buffer(0, M.data.active_tour)
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.active_tour.stops)
   save()
   log.info(string.format("codetour: stop #%d note updated", idx))
 end
 
----Remove the stop nearest the cursor. Re-keys extmarks across all loaded
----buffers so subsequent index references stay valid.
+---Remove the stop nearest the cursor.
 function M.remove()
   M.ensure_loaded()
   if not require_active() then
@@ -328,25 +311,18 @@ function M.remove()
     return
   end
 
-  local anchor = require "codetour.anchor"
-  anchor.refresh(M.data.active_tour.stops)
+  -- Pull live extmark positions into the stops first so the save reflects
+  -- where the line actually is, not the persisted lnum from add-time.
+  decoration.sync_positions(M.data.active_tour.stops)
 
   local removed = Tour.remove_stop(M.data.active_tour, idx)
   local removed_label = string.format("%s:%d", vim.fn.fnamemodify(removed.file, ":t"), removed.lnum)
 
-  -- Indices shifted; rebuild extmark/note/sign tracking from scratch.
-  local notes = require "codetour.notes"
-  local signs = require "codetour.signs"
-  anchor.detach_all()
-  notes.detach_all()
-  signs.detach_all()
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(bufnr) then
-      anchor.attach(bufnr, M.data.active_tour.stops)
-      notes.refresh(bufnr, M.data.active_tour.stops, M.data.active_tour.name)
-      signs.refresh(bufnr, M.data.active_tour.stops)
-    end
-  end
+  -- Drop the removed stop's extmark/note/sign directly. The remaining stops
+  -- keep their anchor extmarks (id-keyed, no shift) but their note/sign text
+  -- needs re-rendering because (idx/total) shifted; refresh_all covers that.
+  decoration.detach_stop(removed.id)
+  decoration.refresh_all(M.data.active_tour)
 
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.active_tour.stops)
@@ -384,20 +360,13 @@ function M.replace_stops(new_stops)
     return
   end
 
-  local anchor = require "codetour.anchor"
-  local notes = require "codetour.notes"
-  local signs = require "codetour.signs"
-  anchor.detach_all()
-  notes.detach_all()
-  signs.detach_all()
-
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(bufnr) then
-      anchor.attach(bufnr, M.data.active_tour.stops)
-      notes.refresh(bufnr, M.data.active_tour.stops, M.data.active_tour.name)
-      signs.refresh(bufnr, M.data.active_tour.stops)
-    end
-  end
+  -- :TourEdit can reorder, edit notes, and drop stops. Stops that survive
+  -- the apply keep their ids — and therefore their anchor extmarks. Stops
+  -- that were dropped leave orphan extmarks in the maps; detach_all clears
+  -- those en masse rather than tracking each one. (refresh_all reattaches
+  -- the survivors.)
+  decoration.detach_all()
+  decoration.refresh_all(M.data.active_tour)
 
   local qf = require "codetour.qf"
   qf.update_if_tour_active(M.data.active_tour.stops)

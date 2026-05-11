@@ -52,22 +52,11 @@ function M.setup(opts)
     set_default_keymaps()
   end
 
-  -- Cover the case where this plugin loads after some buffers were already read
-  -- (e.g. lazy.nvim's default deferred loading): walk loaded buffers and attach
-  -- extmarks/notes/signs for the active tour's stops.
-  local anchor = require "codetour.anchor"
-  local notes = require "codetour.notes"
-  local signs = require "codetour.signs"
+  -- Cover the case where this plugin loads after some buffers were already
+  -- read (e.g. lazy.nvim's default deferred loading): re-render decoration
+  -- across all loaded buffers for the active tour's stops.
   state.ensure_loaded()
-  local stops = state.stops()
-  local name = state.data.active_tour and state.data.active_tour.name or nil
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(bufnr) then
-      anchor.attach(bufnr, stops)
-      notes.refresh(bufnr, stops, name)
-      signs.refresh(bufnr, stops)
-    end
-  end
+  require("codetour.decoration").refresh_all(state.data.active_tour)
 end
 
 function M.ping()
@@ -141,10 +130,8 @@ function M.edit_note(text)
 end
 
 function M.toggle_notes()
-  local notes = require "codetour.notes"
   local log = require "codetour.log"
-  local name = state.data.active_tour and state.data.active_tour.name or nil
-  local visible = notes.toggle(state.stops(), name)
+  local visible = require("codetour.decoration").toggle_notes(state.data.active_tour)
   log.info("codetour: notes " .. (visible and "shown" or "hidden"))
 end
 
