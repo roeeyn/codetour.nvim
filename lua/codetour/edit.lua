@@ -7,7 +7,7 @@ M._state = {
   list_bufnr = nil,
   preview_winid = nil,
   preview_bufnr = nil,
-  prev_winid = nil, -- window the user was in before :TourEdit
+  prev_winid = nil, -- window the user was in before :CodeTour
   preview_cache = {}, -- [path] = scratch bufnr (reused as cursor moves between same-file stops)
   augroup = nil,
 }

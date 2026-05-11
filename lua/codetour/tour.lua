@@ -84,7 +84,7 @@ end
 ---Atomically replace the entire stops list. Validates that no two entries
 ---share a (file, lnum) pair. Empty `new_stops` is allowed (a tour with zero
 ---stops is a valid state — the user just hasn't added any yet, or removed
----them all via :TourEdit).
+---them all via :CodeTour).
 ---Preserves each stop's existing `id`; entries lacking an id are assigned
 ---one from `tour.next_id`. Even after this call, `tour.next_id` never
 ---decreases, so a future add_stop cannot collide with an id that was

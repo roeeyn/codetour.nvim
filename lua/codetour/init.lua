@@ -106,10 +106,12 @@ function M.dump()
   state.dump()
 end
 
----Open the oil-style editable buffer for the active tour.
----:w applies (parse + replace_stops); <CR> jumps to the stop under cursor;
----q closes without saving.
-function M.edit()
+---Open the oil-style UI buffer for the active tour. This is the plugin's
+---primary interactive surface: jump to a stop with <CR>, edit notes inline,
+---reorder by moving lines, delete by removing them, `:w` to apply, `q` to
+---close. Named open_ui (rather than the old `edit`) because the buffer
+---does much more than editing.
+function M.open_ui()
   require("codetour.edit").open()
 end
 

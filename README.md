@@ -75,8 +75,8 @@ Quit Neovim and reopen — the tour is still there.
 | `:TourList` | Open a picker over the active tour's stops; `<CR>` jumps |
 | `:TourNextStop` | Jump cursor to the next stop in the **current buffer** (by line). Pure cursor movement; no qf side effects |
 | `:TourPrevStop` | Jump cursor to the previous stop in the current buffer |
-| **Editing the tour (oil-style)** | |
-| `:TourEdit` | Open an editable list of all stops with a syntax-highlighted preview. Reorder by moving lines, edit notes inline, remove by deleting lines. `:w` to apply atomically. |
+| **Tour UI (oil-style)** | |
+| `:CodeTour` | Open the plugin's primary UI: an editable list of all stops with a syntax-highlighted preview. Jump with `<CR>`, reorder by moving lines, edit notes inline, remove by deleting lines. `:w` to apply atomically. |
 | **Display** | |
 | `:TourNotesVirtualTextToggle` | Hide / show all virtual-text notes |
 | `:TourDump` | Print the in-memory state to `:messages` (debug aid) |
@@ -169,7 +169,7 @@ If you'd rather keep tours private to your clone, set `storage_path = ".git/info
 
 **Multi-tour.** Each `:TourCreate <name>` makes a new file. `:TourSelect <name>` switches active. The active tour is what `:TourAdd`, `:TourOpen`, `:TourList`, etc. operate on.
 
-**`:TourEdit` (oil-style buffer).** Opens a 25/75 vsplit: editable list on the left, syntax-highlighted preview on the right that follows the cursor. Each line in the list looks like:
+**`:CodeTour` (oil-style buffer).** Opens a 25/75 vsplit: editable list on the left, syntax-highlighted preview on the right that follows the cursor. Each line in the list looks like:
 
 ```
 [1]  lua/foo.lua:10  ─  entry point
@@ -179,7 +179,7 @@ If you'd rather keep tours private to your clone, set `storage_path = ".git/info
 
 The `[N]` is the stop's identifier. Reorder by moving lines, edit the text after `─` to change a note, delete a line to drop the stop. `:w` parses the buffer and applies all changes atomically — if any line is malformed, the entire save is rejected with an error and state is left untouched. `<CR>` on a stop jumps to it (refuses if there are unsaved edits). `q` closes without saving. `:x` saves and closes.
 
-Editing `file:lnum` is ignored — those segments are display-only. Use `:TourAdd` to add new stops; `:TourEdit` is for editing existing ones.
+Editing `file:lnum` is ignored — those segments are display-only. Use `:TourAdd` to add new stops; `:CodeTour` is for managing existing ones.
 
 ## Status
 

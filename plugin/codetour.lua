@@ -94,8 +94,8 @@ vim.api.nvim_create_user_command("TourList", function()
   require("codetour").list()
 end, { desc = "codetour: open a picker over stops in the active tour" })
 
-vim.api.nvim_create_user_command("TourEdit", function()
-  require("codetour").edit()
+vim.api.nvim_create_user_command("CodeTour", function()
+  require("codetour").open_ui()
 end, { desc = "codetour: open the editable list+preview UI for the active tour" })
 
 vim.api.nvim_create_user_command("TourNextStop", function()

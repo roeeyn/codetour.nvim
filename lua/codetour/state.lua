@@ -368,7 +368,7 @@ function M.dump()
   })
 end
 
----Atomic "swap the entire stops list" — used by :TourEdit's apply path.
+---Atomic "swap the entire stops list" — used by :CodeTour's apply path.
 ---Drops every extmark / note / sign, replaces stops, re-attaches across
 ---all loaded buffers, syncs qf, and saves. The caller is expected to have
 ---already validated that each new stop maps to an original (the idx-existence
@@ -387,7 +387,7 @@ function M.replace_stops(new_stops)
     return
   end
 
-  -- :TourEdit can reorder, edit notes, and drop stops. Stops that survive
+  -- :CodeTour can reorder, edit notes, and drop stops. Stops that survive
   -- the apply keep their ids — and therefore their anchor extmarks. Stops
   -- that were dropped leave orphan extmarks in the maps; detach_all clears
   -- those en masse rather than tracking each one. (refresh_all reattaches
