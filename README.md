@@ -157,6 +157,44 @@ require("codetour").setup({
 
 `dressing.nvim` and `noice.nvim` both work too. A native Telescope extension with split-pane preview is on the TODOs.
 
+## Agent skills
+
+The plugin ships an agent skill that teaches Claude (and other agent runtimes) how to author tours on demand — so you can prompt *"show me the auth flow in this API"* in any project and get back a curated `.codetour/auth-flow.json`.
+
+| Skill | What it does |
+|---|---|
+| `create-codetour-tour` | Authors or amends tour files (the JSON at `<repo>/.codetour/<name>.json`). Knows the schema, path conventions, the why-not-what note style, and the 3–7-stop sweet spot. Triggers on prompts like *"show me the X flow"*, *"trace how Y works"*, *"add a stop to the auth-flow tour"*. |
+
+### Install (recommended — auto-updates with `npm` cache)
+
+[`skills`](https://github.com/vercel-labs/skills) is a small CLI that installs agent skills from a GitHub repo. It auto-discovers `.claude/skills/<skill-name>/` and installs to `~/.claude/skills/`:
+
+```sh
+npx skills@latest add roeeyn/codetour.nvim
+```
+
+Pick `create-codetour-tour` when prompted (or pass `-g` to install globally without the prompt). Re-run the same command later to update.
+
+### Install (manual, if you don't want `npx`)
+
+If you use `lazy.nvim` and want the skill to track this repo:
+
+```sh
+ln -s ~/.local/share/nvim/lazy/codetour.nvim/.claude/skills/create-codetour-tour ~/.claude/skills/create-codetour-tour
+```
+
+Or copy if you'd rather snapshot the current version:
+
+```sh
+cp -r ~/.local/share/nvim/lazy/codetour.nvim/.claude/skills/create-codetour-tour ~/.claude/skills/
+```
+
+The symlink version updates whenever you `git pull` (or your plugin manager updates the plugin). The copy version doesn't — you'll need to re-run to get schema changes.
+
+### Verify it loaded
+
+In any project, ask Claude: *"create a tour of how requests get authenticated in this codebase."* If the skill is installed, Claude consults it and produces a `.codetour/<name>.json` file. If not, it'll just answer in prose.
+
 ## How it works
 
 **Storage layout.** Each tour is its own JSON file at `<repo>/.codetour/<name>.json` (configurable via `storage_path`). A small `_active_tour.txt` pointer remembers the last-active tour across sessions. The default location is visible at repo root so tours are easy to commit, share with teammates, and read from external tools (e.g. a future CLI). Per-tour files mean atomic per-tour writes, easy export (`cp auth.json /tmp/share`), and no concurrent-write hazard across worktrees.
