@@ -2,19 +2,24 @@ local M = {}
 
 ---@class CodeTour.Tour
 ---@field name string Name of the tour (matches its on-disk filename)
----@field stops CodeTour.Stop[] Ordered list of stops; the array index identifies them (1-based)
+---@field stops CodeTour.Stop[] Ordered list of stops; `stop.id` is the stable identity (idx is just position)
+---@field next_id integer Monotonic counter for assigning the next stop.id; persisted with the tour
 
 -- Tour is a pure data module: zero dependencies on vim, storage, notify, or
 -- any other codetour module. Mutations return (ok, err) instead of calling
 -- log.warn so the user-facing notify layer stays in state.lua. File paths
 -- are compared by string equality — callers are responsible for
 -- canonicalising paths before passing them in.
+--
+-- Stops carry a stable `id` assigned by Tour.add_stop from `tour.next_id`,
+-- which only ever moves forward. Decoration layers key on stop.id so that
+-- a remove doesn't shift identities and force a rebuild-from-scratch.
 
 ---Construct a new empty tour.
 ---@param name string
 ---@return CodeTour.Tour
 function M.new(name)
-  return { name = name, stops = {} }
+  return { name = name, stops = {}, next_id = 1 }
 end
 
 ---Does the tour contain a stop at (file, lnum)?
@@ -33,6 +38,8 @@ function M.has_stop_at(tour, file, lnum)
 end
 
 ---Append a stop. Refuses if another stop already lives at the same (file, lnum).
+---Always assigns a fresh `id` from `tour.next_id` and bumps the counter,
+---ignoring any id the caller may have set on the stop.
 ---@param tour CodeTour.Tour
 ---@param stop CodeTour.Stop
 ---@return boolean ok
@@ -41,6 +48,8 @@ function M.add_stop(tour, stop)
   if M.has_stop_at(tour, stop.file, stop.lnum) then
     return false, string.format("a stop already exists at %s:%d", stop.file, stop.lnum)
   end
+  stop.id = tour.next_id
+  tour.next_id = tour.next_id + 1
   table.insert(tour.stops, stop)
   return true
 end
@@ -76,6 +85,10 @@ end
 ---share a (file, lnum) pair. Empty `new_stops` is allowed (a tour with zero
 ---stops is a valid state — the user just hasn't added any yet, or removed
 ---them all via :TourEdit).
+---Preserves each stop's existing `id`; entries lacking an id are assigned
+---one from `tour.next_id`. Even after this call, `tour.next_id` never
+---decreases, so a future add_stop cannot collide with an id that was
+---previously assigned to a now-removed stop.
 ---@param tour CodeTour.Tour
 ---@param new_stops CodeTour.Stop[]
 ---@return boolean ok
@@ -88,6 +101,17 @@ function M.replace_stops(tour, new_stops)
       return false, string.format("entry #%d is a duplicate of an earlier entry at %s", i, key)
     end
     seen[key] = true
+  end
+  for _, stop in ipairs(new_stops) do
+    if stop.id == nil then
+      stop.id = tour.next_id
+      tour.next_id = tour.next_id + 1
+    elseif stop.id >= tour.next_id then
+      -- Defensive: a caller passed an id at or beyond our counter (e.g. a
+      -- legacy load synthesised ids before us). Advance so future add_stop
+      -- doesn't collide.
+      tour.next_id = stop.id + 1
+    end
   end
   tour.stops = new_stops
   return true

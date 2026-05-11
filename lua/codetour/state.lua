@@ -4,6 +4,7 @@ local log = require "codetour.log"
 local M = {}
 
 ---@class CodeTour.Stop
+---@field id integer Stable identity within the Tour; assigned by Tour.add_stop, never reused
 ---@field file string Canonical absolute path to the file the stop lives in
 ---@field lnum integer 1-indexed line number (matches nvim_win_get_cursor)
 ---@field col integer 0-indexed byte column (matches nvim_win_get_cursor)

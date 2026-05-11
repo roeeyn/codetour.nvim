@@ -155,6 +155,65 @@ describe("codetour.storage", function()
     local tours = storage.list_tours()
     assert.same({ "auth", "billing" }, tours)
   end)
+
+  it("save_tour + load_tour round-trips stop ids and next_id", function()
+    local info = git.info()
+    local tour = Tour.new "auth"
+    Tour.add_stop(tour, { file = info.root .. "/a.lua", lnum = 1, col = 0, note = "one", context = "" })
+    Tour.add_stop(tour, { file = info.root .. "/b.lua", lnum = 1, col = 0, note = "two", context = "" })
+    assert.equals(1, tour.stops[1].id)
+    assert.equals(2, tour.stops[2].id)
+    assert.equals(3, tour.next_id)
+    storage.save_tour(tour)
+
+    local loaded = storage.load_tour "auth"
+    assert.equals(1, loaded.stops[1].id, "stop ids must survive a save+load round-trip")
+    assert.equals(2, loaded.stops[2].id)
+    assert.equals(3, loaded.next_id, "tour.next_id must survive too")
+  end)
+
+  it("load_tour synthesises ids for legacy stop entries that lack them", function()
+    -- Hand-craft an old-format tour JSON (no ids on stops, no next_id field).
+    local info = git.info()
+    local file = info.root .. "/.codetour/legacy.json"
+    vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
+    local f = io.open(file, "w")
+    f:write(vim.fn.json_encode {
+      version = 2,
+      name = "legacy",
+      stops = {
+        { file = "a.lua", lnum = 1, col = 0, note = "x", context = "" },
+        { file = "b.lua", lnum = 1, col = 0, note = "y", context = "" },
+      },
+    })
+    f:close()
+
+    local loaded = storage.load_tour "legacy"
+    assert.is_not_nil(loaded.stops[1].id, "legacy stop should have an id synthesised")
+    assert.is_not_nil(loaded.stops[2].id)
+    assert.are_not.equals(loaded.stops[1].id, loaded.stops[2].id, "synthesised ids must be unique")
+    assert.is_true(loaded.next_id > loaded.stops[1].id and loaded.next_id > loaded.stops[2].id)
+  end)
+
+  it("load_tour advances next_id past the highest stored stop.id (defensive)", function()
+    -- Simulates a JSON written with stale next_id (e.g. user edited it down).
+    local info = git.info()
+    local file = info.root .. "/.codetour/stale.json"
+    vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
+    local f = io.open(file, "w")
+    f:write(vim.fn.json_encode {
+      version = 2,
+      name = "stale",
+      next_id = 2, -- bogus: lower than max(id) below
+      stops = {
+        { id = 7, file = "a.lua", lnum = 1, col = 0, note = "x", context = "" },
+      },
+    })
+    f:close()
+
+    local loaded = storage.load_tour "stale"
+    assert.equals(8, loaded.next_id, "next_id must be > max stop.id even if JSON says otherwise")
+  end)
 end)
 
 describe("codetour.util", function()
@@ -351,6 +410,68 @@ describe("codetour.tour", function()
     Tour.add_stop(t, { file = "/b", lnum = 10, col = 0, note = "in b", context = "" })
     -- Nothing in /a beyond lnum 5 — /b's lnum 10 doesn't count.
     assert.is_nil(Tour.adjacent_stop(t, "/a", 5, "next"))
+  end)
+
+  it("new() initialises next_id to 1", function()
+    local t = Tour.new "auth"
+    assert.equals(1, t.next_id)
+  end)
+
+  it("add_stop() assigns sequential ids and bumps next_id", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "first", context = "" })
+    Tour.add_stop(t, { file = "/b", lnum = 1, col = 0, note = "second", context = "" })
+    assert.equals(1, t.stops[1].id)
+    assert.equals(2, t.stops[2].id)
+    assert.equals(3, t.next_id)
+  end)
+
+  it("add_stop() overwrites any caller-supplied id (no caller-controlled identity)", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { id = 999, file = "/a", lnum = 1, col = 0, note = "x", context = "" })
+    assert.equals(1, t.stops[1].id, "caller's id=999 should have been replaced with 1")
+  end)
+
+  it("remove_stop() does not roll back next_id (so re-adds cannot collide)", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "one", context = "" }) -- id 1
+    Tour.add_stop(t, { file = "/b", lnum = 1, col = 0, note = "two", context = "" }) -- id 2
+    Tour.remove_stop(t, 2)
+    assert.equals(3, t.next_id, "next_id stays past the highest id ever assigned")
+    Tour.add_stop(t, { file = "/c", lnum = 1, col = 0, note = "three", context = "" })
+    assert.equals(3, t.stops[2].id, "new stop gets fresh id 3, not the recycled 2")
+  end)
+
+  it("replace_stops() preserves stops' existing ids", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "one", context = "" }) -- id 1
+    Tour.add_stop(t, { file = "/b", lnum = 1, col = 0, note = "two", context = "" }) -- id 2
+
+    -- Reorder: keep both ids
+    local reordered = { t.stops[2], t.stops[1] }
+    Tour.replace_stops(t, reordered)
+    assert.equals(2, t.stops[1].id)
+    assert.equals(1, t.stops[2].id)
+  end)
+
+  it("replace_stops() assigns ids to entries that lack them", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "one", context = "" }) -- id 1
+    Tour.replace_stops(t, {
+      t.stops[1], -- carries id 1
+      { file = "/b", lnum = 1, col = 0, note = "no id", context = "" }, -- gets id 2
+    })
+    assert.equals(1, t.stops[1].id)
+    assert.equals(2, t.stops[2].id)
+    assert.equals(3, t.next_id)
+  end)
+
+  it("replace_stops() advances next_id past caller-supplied ids that exceed it", function()
+    local t = Tour.new "auth"
+    Tour.replace_stops(t, {
+      { id = 42, file = "/a", lnum = 1, col = 0, note = "loaded from disk", context = "" },
+    })
+    assert.equals(43, t.next_id)
   end)
 end)
 

@@ -131,9 +131,11 @@ function M.load_tour(name)
   end
 
   local tour = Tour.new(decoded.name or name)
+  tour.next_id = decoded.next_id or 1
   local root = info and info.root or nil
   for _, s in ipairs(decoded.stops or {}) do
     table.insert(tour.stops, {
+      id = s.id, -- may be nil for legacy tour files — synthesised below
       file = to_absolute(s.file, root),
       lnum = s.lnum,
       col = s.col,
@@ -141,6 +143,26 @@ function M.load_tour(name)
       context = s.context or "",
     })
   end
+
+  -- Backward-compat: legacy tour files predate stop.id. Walk the stops and
+  -- assign sequential ids to any that lack one, advancing tour.next_id past
+  -- the highest existing id so future add_stop cannot collide.
+  local max_id = 0
+  for _, s in ipairs(tour.stops) do
+    if s.id and s.id > max_id then
+      max_id = s.id
+    end
+  end
+  if max_id >= tour.next_id then
+    tour.next_id = max_id + 1
+  end
+  for _, s in ipairs(tour.stops) do
+    if s.id == nil then
+      s.id = tour.next_id
+      tour.next_id = tour.next_id + 1
+    end
+  end
+
   return tour
 end
 
@@ -164,6 +186,7 @@ function M.save_tour(tour)
   local stops_rel = {}
   for _, s in ipairs(tour.stops) do
     table.insert(stops_rel, {
+      id = s.id,
       file = to_relative(s.file, root),
       lnum = s.lnum,
       col = s.col,
@@ -175,6 +198,7 @@ function M.save_tour(tour)
   local payload = {
     version = STORAGE_VERSION,
     name = tour.name,
+    next_id = tour.next_id,
     stops = stops_rel,
   }
 
