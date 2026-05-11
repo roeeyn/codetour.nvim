@@ -18,7 +18,8 @@ end
 
 function M.open()
   state.ensure_loaded()
-  if #state.data.stops == 0 then
+  local stops = state.stops()
+  if #stops == 0 then
     require("codetour.log").warn "codetour: no stops to open"
     return
   end
@@ -26,7 +27,7 @@ function M.open()
   -- Pull the latest positions from extmarks before building qf items so
   -- the user lands on the actual current line, not the stale persisted one.
   local anchor = require "codetour.anchor"
-  anchor.refresh(state.data.stops)
+  anchor.refresh(stops)
 
   -- Only snapshot the prior qf if we're not already in a tour.
   -- This makes :TourOpen idempotent: re-running it refreshes without losing the real prior list.
@@ -36,7 +37,7 @@ function M.open()
   end
 
   local items = {}
-  for _, stop in ipairs(state.data.stops) do
+  for _, stop in ipairs(stops) do
     table.insert(items, {
       filename = stop.file,
       lnum = stop.lnum,

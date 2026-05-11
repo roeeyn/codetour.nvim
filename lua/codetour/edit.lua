@@ -19,7 +19,7 @@ M._state = {
 local LINE_PATTERN = "^%[(%d+)%]%s+(.-):(%d+)%s+─%s*(.*)$"
 
 ---@class CodeTour.Edit.Parsed
----@field idx integer Original 1-based stop index in state.data.stops
+---@field idx integer Original 1-based stop index in state.data.active_tour.stops
 ---@field note string The (possibly-edited) note text
 
 ---Render the active tour's stops as buffer lines.
@@ -73,7 +73,7 @@ function M.apply(parsed)
   local seen = {}
   local new_stops = {}
   for _, p in ipairs(parsed) do
-    local original = state.data.stops[p.idx]
+    local original = state.data.active_tour.stops[p.idx]
     if original == nil then
       return false, string.format("stop #%d doesn't exist in this tour", p.idx)
     end
@@ -222,7 +222,10 @@ local function stop_at_cursor()
   end
   idx = tonumber(idx)
   local state = require "codetour.state"
-  return idx, state.data.stops[idx]
+  if state.data.active_tour == nil then
+    return nil, nil
+  end
+  return idx, state.data.active_tour.stops[idx]
 end
 
 local function update_preview()
@@ -271,12 +274,13 @@ local function on_save()
     return
   end
   local state = require "codetour.state"
+  local tour = state.data.active_tour
   vim.api.nvim_buf_set_lines(
     M._state.list_bufnr,
     0,
     -1,
     false,
-    M._build_buffer_lines(state.data.stops, state.data.active_tour)
+    M._build_buffer_lines(tour and tour.stops or {}, tour and tour.name or nil)
   )
   vim.bo[M._state.list_bufnr].modified = false
   update_preview()
@@ -330,13 +334,13 @@ function M.open()
   vim.bo[list_bufnr].bufhidden = "wipe"
   vim.bo[list_bufnr].swapfile = false
   vim.bo[list_bufnr].filetype = "codetour"
-  pcall(vim.api.nvim_buf_set_name, list_bufnr, "codetour://" .. state.data.active_tour)
+  pcall(vim.api.nvim_buf_set_name, list_bufnr, "codetour://" .. state.data.active_tour.name)
 
   -- Header is written as `#` comment lines, which the parser skips. Putting
   -- the header inside the buffer (rather than via virt_lines_above) sidesteps
   -- nvim's "no display row above row 0" rendering quirk and lets the user
   -- copy/paste the help text out if they want.
-  local lines = M._build_buffer_lines(state.data.stops, state.data.active_tour)
+  local lines = M._build_buffer_lines(state.data.active_tour.stops, state.data.active_tour.name)
   vim.api.nvim_buf_set_lines(list_bufnr, 0, -1, false, lines)
   vim.bo[list_bufnr].modified = false
 

@@ -13,13 +13,14 @@ function M.stops()
     return
   end
 
-  if #state.data.stops == 0 then
-    log.warn(string.format("codetour: tour '%s' has no stops yet", state.data.active_tour))
+  local tour = state.data.active_tour
+  if #tour.stops == 0 then
+    log.warn(string.format("codetour: tour '%s' has no stops yet", tour.name))
     return
   end
 
   local entries = {}
-  for idx, stop in ipairs(state.data.stops) do
+  for idx, stop in ipairs(tour.stops) do
     table.insert(entries, {
       idx = idx,
       stop = stop,
@@ -34,7 +35,7 @@ function M.stops()
   end
 
   vim.ui.select(entries, {
-    prompt = string.format("Stops in '%s' (%d total)", state.data.active_tour, #entries),
+    prompt = string.format("Stops in '%s' (%d total)", tour.name, #entries),
     format_item = function(entry)
       return entry.display
     end,

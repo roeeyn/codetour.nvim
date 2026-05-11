@@ -2,7 +2,7 @@ local M = {}
 
 local NAMESPACE = vim.api.nvim_create_namespace "codetour_notes"
 
--- bufnr -> { [idx_in_state.data.stops] = note_extmark_id }
+-- bufnr -> { [idx_in_active_tour.stops] = note_extmark_id }
 -- Separate from anchor's extmark map: position and note are conceptually different layers.
 M._buf_marks = {}
 

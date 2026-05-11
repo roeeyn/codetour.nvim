@@ -3,7 +3,7 @@ local M = {}
 local NAMESPACE = vim.api.nvim_create_namespace "codetour"
 local SEARCH_RADIUS = 20
 
--- bufnr -> { [idx_in_state.data.stops] = extmark_id }
+-- bufnr -> { [idx_in_active_tour.stops] = extmark_id }
 -- Module-local because the map's lifetime is the session, and only this module
 -- ever needs to read or write it.
 M._buf_extmarks = {}

@@ -1,5 +1,6 @@
 local git = require "codetour.git"
 local storage = require "codetour.storage"
+local Tour = require "codetour.tour"
 
 local function tmpdir()
   local d = vim.fn.tempname()
@@ -58,20 +59,23 @@ describe("codetour.storage", function()
     vim.cmd("cd " .. vim.fn.fnameescape(repo))
   end)
   after_each(function()
+    -- Defensive: every test should leave storage_path back at the default,
+    -- otherwise a failure mid-test pollutes everything downstream.
+    require("codetour.config").merge { storage_path = ".codetour" }
     vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
   end)
 
-  it("returns nil when no tour file exists", function()
-    assert.is_nil(storage.load "missing")
+  it("load_tour returns nil when no tour file exists", function()
+    assert.is_nil(storage.load_tour "missing")
   end)
 
   it("list_tours returns empty when no tours exist", function()
     assert.equals(0, #storage.list_tours())
   end)
 
-  it("round-trips an empty tour", function()
-    storage.save("default", {})
-    local loaded = storage.load "default"
+  it("save_tour + load_tour round-trips an empty tour", function()
+    storage.save_tour(Tour.new "default")
+    local loaded = storage.load_tour "default"
     assert.is_not_nil(loaded)
     assert.equals("default", loaded.name)
     assert.equals(0, #loaded.stops)
@@ -79,11 +83,12 @@ describe("codetour.storage", function()
 
   it("converts absolute paths to relative on save and back on load", function()
     local info = git.info()
-    local stops = {
+    local tour = Tour.new "auth"
+    tour.stops = {
       { file = info.root .. "/foo.lua", lnum = 10, col = 0, note = "entry" },
       { file = info.root .. "/bar/baz.py", lnum = 42, col = 4, note = "" },
     }
-    storage.save("auth", stops)
+    storage.save_tour(tour)
 
     -- On-disk uses relative paths
     local on_disk = info.root .. "/.codetour/auth.json"
@@ -96,20 +101,20 @@ describe("codetour.storage", function()
     assert.equals("bar/baz.py", decoded.stops[2].file)
 
     -- Load reconstructs absolute paths
-    local loaded = storage.load "auth"
+    local loaded = storage.load_tour "auth"
     assert.equals(info.root .. "/foo.lua", loaded.stops[1].file)
     assert.equals(10, loaded.stops[1].lnum)
     assert.equals("entry", loaded.stops[1].note)
   end)
 
-  it("returns nil on malformed JSON", function()
+  it("load_tour returns nil on malformed JSON", function()
     local info = git.info()
     local file = info.root .. "/.codetour/auth.json"
     vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
     local f = io.open(file, "w")
     f:write "garbage{{{"
     f:close()
-    assert.is_nil(storage.load "auth")
+    assert.is_nil(storage.load_tour "auth")
   end)
 
   it("active-tour pointer round-trips", function()
@@ -121,19 +126,17 @@ describe("codetour.storage", function()
   end)
 
   it("delete removes the tour file", function()
-    storage.save("doomed", {})
-    assert.is_not_nil(storage.load "doomed")
+    storage.save_tour(Tour.new "doomed")
+    assert.is_not_nil(storage.load_tour "doomed")
     assert.is_true(storage.delete "doomed")
-    assert.is_nil(storage.load "doomed")
+    assert.is_nil(storage.load_tour "doomed")
   end)
 
   it("respects setup{ storage_path } as a relative path inside the git root", function()
     require("codetour.config").merge { storage_path = "my-tours" }
-    storage.save("scratch", {})
+    storage.save_tour(Tour.new "scratch")
     local info = require("codetour.git").info()
     assert.equals(1, vim.fn.filereadable(info.root .. "/my-tours/scratch.json"))
-    -- Reset for subsequent tests
-    require("codetour.config").merge { storage_path = ".codetour" }
   end)
 
   it("respects setup{ storage_path } as an absolute path (works without a git repo)", function()
@@ -141,16 +144,13 @@ describe("codetour.storage", function()
     require("codetour.config").merge { storage_path = outside }
     -- cd to a non-repo dir to confirm we don't need git here
     vim.cmd("cd " .. vim.fn.fnameescape "/tmp")
-    storage.save("scratch", {})
+    storage.save_tour(Tour.new "scratch")
     assert.equals(1, vim.fn.filereadable(outside .. "/scratch.json"))
-    -- Reset
-    require("codetour.config").merge { storage_path = ".codetour" }
-    vim.cmd("cd " .. vim.fn.fnameescape(repo))
   end)
 
   it("list_tours sorts and excludes the _active_tour pointer", function()
-    storage.save("billing", {})
-    storage.save("auth", {})
+    storage.save_tour(Tour.new "billing")
+    storage.save_tour(Tour.new "auth")
     storage.write_active "auth"
     local tours = storage.list_tours()
     assert.same({ "auth", "billing" }, tours)
@@ -786,8 +786,8 @@ describe("codetour.edit", function()
     assert.is_false(ok)
     assert.is_truthy(err:match "more than once")
     -- State unchanged
-    assert.equals(2, #state.data.stops)
-    assert.equals("first", state.data.stops[1].note)
+    assert.equals(2, #state.data.active_tour.stops)
+    assert.equals("first", state.data.active_tour.stops[1].note)
   end)
 
   it("apply() refuses when an index doesn't exist", function()
@@ -801,7 +801,7 @@ describe("codetour.edit", function()
     local ok, err = edit.apply { { idx = 99, note = "x" } }
     assert.is_false(ok)
     assert.is_truthy(err:match "doesn't exist")
-    assert.equals(1, #state.data.stops)
+    assert.equals(1, #state.data.active_tour.stops)
   end)
 
   it("apply() reorders, edits notes, and removes stops atomically", function()
@@ -823,10 +823,10 @@ describe("codetour.edit", function()
       { idx = 2, note = "BETA edited" },
     }
     assert.is_true(ok)
-    assert.equals(3, #state.data.stops)
-    assert.equals("GAMMA edited", state.data.stops[1].note)
-    assert.equals("alpha", state.data.stops[2].note)
-    assert.equals("BETA edited", state.data.stops[3].note)
+    assert.equals(3, #state.data.active_tour.stops)
+    assert.equals("GAMMA edited", state.data.active_tour.stops[1].note)
+    assert.equals("alpha", state.data.active_tour.stops[2].note)
+    assert.equals("BETA edited", state.data.active_tour.stops[3].note)
   end)
 
   it("apply() preserves file/lnum/col/context (only note is editable)", function()
@@ -837,16 +837,16 @@ describe("codetour.edit", function()
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "original"
 
-    local original_file = state.data.stops[1].file
-    local original_lnum = state.data.stops[1].lnum
-    local original_context = state.data.stops[1].context
+    local original_file = state.data.active_tour.stops[1].file
+    local original_lnum = state.data.active_tour.stops[1].lnum
+    local original_context = state.data.active_tour.stops[1].context
 
     edit.apply { { idx = 1, note = "rewritten" } }
 
-    assert.equals(original_file, state.data.stops[1].file)
-    assert.equals(original_lnum, state.data.stops[1].lnum)
-    assert.equals(original_context, state.data.stops[1].context)
-    assert.equals("rewritten", state.data.stops[1].note)
+    assert.equals(original_file, state.data.active_tour.stops[1].file)
+    assert.equals(original_lnum, state.data.active_tour.stops[1].lnum)
+    assert.equals(original_context, state.data.active_tour.stops[1].context)
+    assert.equals("rewritten", state.data.active_tour.stops[1].note)
   end)
 
   it("open() warns and bails when there is no active tour", function()
@@ -894,7 +894,7 @@ describe("codetour.edit", function()
     local ok, err = edit.commit { "not-a-valid-line" }
     assert.is_false(ok)
     assert.is_truthy(err)
-    assert.equals("untouched", state.data.stops[1].note)
+    assert.equals("untouched", state.data.active_tour.stops[1].note)
   end)
 end)
 
@@ -1117,7 +1117,7 @@ describe("codetour.picker", function()
     local state = require "codetour.state"
     state.create "auth"
     state.create "billing"
-    assert.equals("billing", state.data.active_tour)
+    assert.equals("billing", state.data.active_tour.name)
 
     vim.ui.select = function(items, _, on_choice)
       -- pick the first entry (auth, since list_tours sorts alphabetically)
@@ -1125,7 +1125,7 @@ describe("codetour.picker", function()
     end
 
     require("codetour.picker").tours()
-    assert.equals("auth", state.data.active_tour, "picker should switch to chosen tour")
+    assert.equals("auth", state.data.active_tour.name, "picker should switch to chosen tour")
   end)
 end)
 
@@ -1154,8 +1154,8 @@ describe("codetour.state", function()
 
   it("create() makes a new tour active and persists an empty file", function()
     state.create "auth"
-    assert.equals("auth", state.data.active_tour)
-    assert.equals(0, #state.data.stops)
+    assert.equals("auth", state.data.active_tour.name)
+    assert.equals(0, #state.data.active_tour.stops)
     -- Active pointer was written
     assert.equals("auth", storage.read_active())
     -- Tour file was created
@@ -1184,22 +1184,22 @@ describe("codetour.state", function()
   it("select() switches the active tour and reloads its stops", function()
     state.create "auth"
     -- pretend we added a stop manually
-    state.data.stops = { { file = "/x", lnum = 1, col = 0, note = "auth-stop", context = "" } }
-    storage.save("auth", state.data.stops)
+    state.data.active_tour.stops = { { file = "/x", lnum = 1, col = 0, note = "auth-stop", context = "" } }
+    storage.save_tour(state.data.active_tour)
 
     state.create "billing"
-    assert.equals("billing", state.data.active_tour)
-    assert.equals(0, #state.data.stops)
+    assert.equals("billing", state.data.active_tour.name)
+    assert.equals(0, #state.data.active_tour.stops)
 
     state.select "auth"
-    assert.equals("auth", state.data.active_tour)
-    assert.equals("auth-stop", state.data.stops[1].note)
+    assert.equals("auth", state.data.active_tour.name)
+    assert.equals("auth-stop", state.data.active_tour.stops[1].note)
   end)
 
   it("select() warns and no-ops when the tour doesn't exist", function()
     state.create "auth"
     state.select "nope"
-    assert.equals("auth", state.data.active_tour, "active tour should be unchanged")
+    assert.equals("auth", state.data.active_tour.name, "active tour should be unchanged")
   end)
 
   it("delete() removes a non-active tour and leaves active alone", function()
@@ -1213,7 +1213,7 @@ describe("codetour.state", function()
     state.delete "auth"
     vim.fn.confirm = original_confirm
     assert.same({ "billing" }, storage.list_tours())
-    assert.equals("billing", state.data.active_tour)
+    assert.equals("billing", state.data.active_tour.name)
   end)
 
   it("delete() clears active state when deleting the active tour", function()
@@ -1235,7 +1235,7 @@ describe("codetour.state", function()
     package.loaded["codetour.state"] = nil
     local fresh = require "codetour.state"
     fresh.ensure_loaded()
-    assert.equals("billing", fresh.data.active_tour)
+    assert.equals("billing", fresh.data.active_tour.name)
   end)
 
   it("ensure_loaded() clears the active pointer when the file is missing", function()
@@ -1253,8 +1253,8 @@ describe("codetour.state", function()
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
-    assert.equals("default", state.data.active_tour)
-    assert.equals(1, #state.data.stops)
+    assert.equals("default", state.data.active_tour.name)
+    assert.equals(1, #state.data.active_tour.stops)
   end)
 
   it("edit_note() requires an active tour", function()
@@ -1271,11 +1271,15 @@ describe("codetour.state", function()
   end)
 
   it("edit_note() rejects empty text", function()
-    state.data.stops = { { file = "/anything", lnum = 1, col = 0, note = "old", context = "" } }
+    -- Empty-text check happens before the active-tour check, so we don't
+    -- strictly need a tour — but set one up so the asserts have something
+    -- meaningful to read back from.
+    state.data.active_tour = Tour.new "default"
+    state.data.active_tour.stops = { { file = "/anything", lnum = 1, col = 0, note = "old", context = "" } }
     state.edit_note ""
-    assert.equals("old", state.data.stops[1].note)
+    assert.equals("old", state.data.active_tour.stops[1].note)
     state.edit_note(nil)
-    assert.equals("old", state.data.stops[1].note)
+    assert.equals("old", state.data.active_tour.stops[1].note)
   end)
 
   it("edit_note() updates the nearest stop's note in the current buffer", function()
@@ -1285,26 +1289,33 @@ describe("codetour.state", function()
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     vim.api.nvim_win_set_cursor(0, { 2, 0 })
 
-    state.data.stops = {
-      { file = tmp, lnum = 1, col = 0, note = "first", context = "" },
-      { file = tmp, lnum = 2, col = 0, note = "second", context = "" },
-      { file = tmp, lnum = 3, col = 0, note = "third", context = "" },
+    -- Tour stops carry canonical paths post-Phase-2 (state.add canonicalises
+    -- on insert). When bypassing state.add to inject stops manually, we have
+    -- to canonicalise ourselves so Tour.nearest_stop_idx's string-equality
+    -- lookup against the buffer's canonical path matches.
+    local util = require "codetour.util"
+    local canonical = util.canonical(tmp)
+    state.data.active_tour = Tour.new "default"
+    state.data.active_tour.stops = {
+      { file = canonical, lnum = 1, col = 0, note = "first", context = "" },
+      { file = canonical, lnum = 2, col = 0, note = "second", context = "" },
+      { file = canonical, lnum = 3, col = 0, note = "third", context = "" },
     }
     state.data.loaded = true
-    state.data.active_tour = "default"
 
     state.edit_note "rewritten"
-    assert.equals("rewritten", state.data.stops[2].note) -- nearest to cursor on line 2
-    assert.equals("first", state.data.stops[1].note) -- unchanged
-    assert.equals("third", state.data.stops[3].note) -- unchanged
+    assert.equals("rewritten", state.data.active_tour.stops[2].note) -- nearest to cursor on line 2
+    assert.equals("first", state.data.active_tour.stops[1].note) -- unchanged
+    assert.equals("third", state.data.active_tour.stops[3].note) -- unchanged
   end)
 
   it("edit_note() bails when no stop is in the current buffer", function()
     vim.cmd "enew"
-    state.data.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "old", context = "" } }
+    state.data.active_tour = Tour.new "default"
+    state.data.active_tour.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "old", context = "" } }
     state.data.loaded = true
     state.edit_note "rewritten"
-    assert.equals("old", state.data.stops[1].note)
+    assert.equals("old", state.data.active_tour.stops[1].note)
   end)
 
   it("edit_note() refreshes the quickfix list when a tour is active", function()
@@ -1314,9 +1325,10 @@ describe("codetour.state", function()
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
-    state.data.stops = { { file = tmp, lnum = 1, col = 0, note = "before", context = "" } }
+    local util = require "codetour.util"
+    state.data.active_tour = Tour.new "default"
+    state.data.active_tour.stops = { { file = util.canonical(tmp), lnum = 1, col = 0, note = "before", context = "" } }
     state.data.loaded = true
-    state.data.active_tour = "default"
 
     -- Simulate :TourOpen by populating a tour-titled qf list
     vim.fn.setqflist({}, " ", {
@@ -1438,11 +1450,11 @@ describe("codetour.state", function()
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
     state.add "first"
-    assert.equals(1, #state.data.stops)
+    assert.equals(1, #state.data.active_tour.stops)
     -- Same line, different note text → should still refuse
     state.add "second attempt"
-    assert.equals(1, #state.data.stops, "duplicate at same lnum should be refused")
-    assert.equals("first", state.data.stops[1].note)
+    assert.equals(1, #state.data.active_tour.stops, "duplicate at same lnum should be refused")
+    assert.equals("first", state.data.active_tour.stops[1].note)
   end)
 
   it("add() allows same lnum across different files", function()
@@ -1462,7 +1474,7 @@ describe("codetour.state", function()
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "in tmp2"
 
-    assert.equals(2, #state.data.stops, "same lnum in different files should both be added")
+    assert.equals(2, #state.data.active_tour.stops, "same lnum in different files should both be added")
   end)
 
   it("remove() drops the nearest stop and shifts remaining indices", function()
@@ -1479,24 +1491,25 @@ describe("codetour.state", function()
     state.add "third"
     vim.api.nvim_win_set_cursor(0, { 5, 0 })
     state.add "fifth"
-    assert.equals(3, #state.data.stops)
+    assert.equals(3, #state.data.active_tour.stops)
 
     -- Cursor near the middle stop
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
     state.remove()
-    assert.equals(2, #state.data.stops)
-    assert.equals("first", state.data.stops[1].note)
-    assert.equals("fifth", state.data.stops[2].note) -- index shifted down
+    assert.equals(2, #state.data.active_tour.stops)
+    assert.equals("first", state.data.active_tour.stops[1].note)
+    assert.equals("fifth", state.data.active_tour.stops[2].note) -- index shifted down
   end)
 
   it("remove() bails when no stop is in the current buffer", function()
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
     vim.cmd "enew"
-    state.data.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "x", context = "" } }
+    state.data.active_tour = Tour.new "default"
+    state.data.active_tour.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "x", context = "" } }
     state.data.loaded = true
     state.remove()
-    assert.equals(1, #state.data.stops, "no removal should occur")
+    assert.equals(1, #state.data.active_tour.stops, "no removal should occur")
   end)
 
   it("add() preserves the current quickfix index when syncing", function()
@@ -1806,7 +1819,7 @@ describe("codetour.state", function()
     })
     vim.fn.setqflist({}, "r", { nr = 0, idx = 2 })
     local before_idx = vim.fn.getqflist({ idx = 0 }).idx
-    local before_stops = vim.deepcopy(state.data.stops)
+    local before_stops = vim.deepcopy(state.data.active_tour.stops)
 
     vim.api.nvim_win_set_cursor(0, { 2, 0 })
     state.next_stop_in_buf() -- moves cursor to line 3
@@ -1814,7 +1827,7 @@ describe("codetour.state", function()
     -- qf idx untouched
     assert.equals(before_idx, vim.fn.getqflist({ idx = 0 }).idx)
     -- stops list untouched
-    assert.same(before_stops, state.data.stops)
+    assert.same(before_stops, state.data.active_tour.stops)
   end)
 
   it("edit_note() leaves a non-tour quickfix list alone", function()
@@ -1823,7 +1836,9 @@ describe("codetour.state", function()
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
-    state.data.stops = { { file = tmp, lnum = 1, col = 0, note = "old", context = "" } }
+    local util = require "codetour.util"
+    state.data.active_tour = Tour.new "default"
+    state.data.active_tour.stops = { { file = util.canonical(tmp), lnum = 1, col = 0, note = "old", context = "" } }
     state.data.loaded = true
 
     -- Pretend the user has a :grep result up

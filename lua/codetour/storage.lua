@@ -1,4 +1,5 @@
 local git = require "codetour.git"
+local Tour = require "codetour.tour"
 local M = {}
 
 local STORAGE_VERSION = 2
@@ -106,10 +107,10 @@ function M.list_tours()
   return out
 end
 
----Load a tour by name.
+---Load a tour by name from disk.
 ---@param name string
----@return { name: string, stops: CodeTour.Stop[] }? nil if not found, parse error, or invalid
-function M.load(name)
+---@return CodeTour.Tour? nil if not found, parse error, or invalid
+function M.load_tour(name)
   if name == nil or name == "" then
     return nil
   end
@@ -129,10 +130,10 @@ function M.load(name)
     return nil
   end
 
-  local restored = {}
+  local tour = Tour.new(decoded.name or name)
   local root = info and info.root or nil
   for _, s in ipairs(decoded.stops or {}) do
-    table.insert(restored, {
+    table.insert(tour.stops, {
       file = to_absolute(s.file, root),
       lnum = s.lnum,
       col = s.col,
@@ -140,19 +141,17 @@ function M.load(name)
       context = s.context or "",
     })
   end
-
-  return { name = decoded.name or name, stops = restored }
+  return tour
 end
 
 ---Save a tour to its file.
----@param name string
----@param stops CodeTour.Stop[]
-function M.save(name, stops)
-  if name == nil or name == "" then
+---@param tour CodeTour.Tour
+function M.save_tour(tour)
+  if tour == nil or tour.name == nil or tour.name == "" then
     return
   end
   local info = git.info()
-  local file = tour_file(info, name)
+  local file = tour_file(info, tour.name)
   if file == nil then
     warn_no_repo_once()
     return -- relative storage_path + no git repo; persistence disabled
@@ -163,7 +162,7 @@ function M.save(name, stops)
   -- absolute (the to_relative helper handles a nil root by passthrough).
   local root = info and info.root or nil
   local stops_rel = {}
-  for _, s in ipairs(stops) do
+  for _, s in ipairs(tour.stops) do
     table.insert(stops_rel, {
       file = to_relative(s.file, root),
       lnum = s.lnum,
@@ -175,7 +174,7 @@ function M.save(name, stops)
 
   local payload = {
     version = STORAGE_VERSION,
-    name = name,
+    name = tour.name,
     stops = stops_rel,
   }
 
