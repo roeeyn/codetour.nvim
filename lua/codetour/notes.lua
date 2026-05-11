@@ -8,7 +8,7 @@ local NAMESPACE = vim.api.nvim_create_namespace "codetour_notes"
 -- conceptually different layers.
 M._buf_marks = {}
 
--- Global visibility flag toggled by :TourNotesToggle.
+-- Global visibility flag toggled by :CodeTour toggle-notes.
 M._visible = true
 
 ---Build the configured prefix string from {name}, {idx}, {total} placeholders.

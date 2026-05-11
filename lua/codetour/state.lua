@@ -93,7 +93,7 @@ end
 
 local function require_active()
   if M.data.active_tour == nil then
-    log.warn "codetour: no active tour. Use :TourCreate <name> or :TourSelect <name> first."
+    log.warn "codetour: no active tour. Use :CodeTour create <name> or :CodeTour select <name> first."
     return false
   end
   return true
@@ -117,7 +117,7 @@ end
 ---@param name string?
 function M.create(name)
   if name == nil or name == "" then
-    log.warn "codetour: usage: :TourCreate <name>"
+    log.warn "codetour: usage: :CodeTour create <name>"
     return
   end
   -- Refuse path-unsafe characters at create time rather than silently
@@ -131,7 +131,7 @@ function M.create(name)
 
   for _, existing in ipairs(storage.list_tours()) do
     if existing == name then
-      log.warn(string.format("codetour: tour '%s' already exists; use :TourSelect to switch", name))
+      log.warn(string.format("codetour: tour '%s' already exists; use :CodeTour select to switch", name))
       return
     end
   end
@@ -152,7 +152,7 @@ end
 ---@param name string?
 function M.select(name)
   if name == nil or name == "" then
-    log.warn "codetour: usage: :TourSelect <name>"
+    log.warn "codetour: usage: :CodeTour select <name>"
     return
   end
   M.ensure_loaded()
@@ -177,7 +177,7 @@ end
 ---@param name string?
 function M.delete(name)
   if name == nil or name == "" then
-    log.warn "codetour: usage: :TourDelete <name>"
+    log.warn "codetour: usage: :CodeTour delete <name>"
     return
   end
   M.ensure_loaded()
@@ -214,7 +214,7 @@ function M.delete(name)
 end
 
 ---Add a stop at the cursor to the active tour. Auto-creates a "default" tour
----if none is active, so the very first :TourAdd "just works."
+---if none is active, so the very first :CodeTour add "just works."
 ---@param note string?
 function M.add(note)
   local file = vim.api.nvim_buf_get_name(0)
@@ -227,7 +227,7 @@ function M.add(note)
   -- Auto-create "default" tour for friction-free first use.
   if M.data.active_tour == nil then
     M.data.active_tour = Tour.new "default"
-    storage.save_tour(M.data.active_tour) -- materialize the file so :TourSelect can find it later
+    storage.save_tour(M.data.active_tour) -- materialize the file so :CodeTour select can find it later
     storage.write_active "default"
   end
 
@@ -282,7 +282,7 @@ end
 ---@param text string
 function M.edit_note(text)
   if text == nil or text == "" then
-    log.warn "codetour: usage: :TourNoteEdit <new text>"
+    log.warn "codetour: usage: :CodeTour note <new text>"
     return
   end
   M.ensure_loaded()

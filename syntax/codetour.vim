@@ -1,4 +1,4 @@
-" Vim syntax file for codetour's :TourEdit list buffer
+" Vim syntax file for codetour's :CodeTour list buffer
 " Filetype is set programmatically by edit.lua when the buffer is created.
 
 if exists('b:current_syntax')

@@ -29,7 +29,7 @@ function M.open()
   require("codetour.decoration").sync_positions(stops)
 
   -- Only snapshot the prior qf if we're not already in a tour.
-  -- This makes :TourOpen idempotent: re-running it refreshes without losing the real prior list.
+  -- This makes :CodeTour open idempotent: re-running it refreshes without losing the real prior list.
   local current_title = (vim.fn.getqflist { title = 1 } or {}).title or ""
   if not current_title:match "^tour:" then
     qf_backup = snapshot()
@@ -54,7 +54,7 @@ function M.open()
 end
 
 ---If a tour quickfix list is currently active (title starts with "tour:"),
----rebuild its items from `stops` so edits like :TourNoteEdit are reflected
+---rebuild its items from `stops` so edits like :CodeTour note are reflected
 ---in the qf view immediately. No-op if the user is on some other qf list.
 ---@param stops CodeTour.Stop[]
 function M.update_if_tour_active(stops)

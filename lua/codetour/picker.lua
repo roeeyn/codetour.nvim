@@ -9,7 +9,7 @@ function M.stops()
   state.ensure_loaded()
 
   if state.data.active_tour == nil then
-    log.warn "codetour: no active tour. Use :TourCreate or :TourSelect first."
+    log.warn "codetour: no active tour. Use :CodeTour create or :CodeTour select first."
     return
   end
 
@@ -61,7 +61,7 @@ function M.tours()
 
   local tours = state.tours_with_meta()
   if #tours == 0 then
-    log.warn "codetour: no tours yet. Use :TourCreate <name> to create one."
+    log.warn "codetour: no tours yet. Use :CodeTour create <name> to create one."
     return
   end
 

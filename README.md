@@ -14,10 +14,10 @@ The closest sibling is VS Code's [CodeTour](https://github.com/microsoft/codetou
 
 - **Ordered sequence of stops** traversed with the quickfix list (`:cnext` / `:cprev`)
 - **A free-text note per stop** rendered as a virtual line *above* the line, with a configurable scannable prefix (e.g. `default (2/5): the dispatch handler`)
-- **Multiple named tours per repo** — `:TourCreate auth-flow`, `:TourCreate billing-flow`, switch between them
+- **Multiple named tours per repo** — `:CodeTour create auth-flow`, `:CodeTour create billing-flow`, switch between them
 - **Per-tour persistence** in `<repo>/.git/info/codetour/<name>.json` (auto-gitignored, per-clone)
 - **Stops follow code edits** via extmarks, with cold-load re-anchoring via context-string match if files changed while nvim was closed
-- **Saves and restores your prior quickfix list** across `:TourOpen` / `:TourClose`
+- **Saves and restores your prior quickfix list** across `:CodeTour open` / `:CodeTour close`
 - **Cross-buffer total updates** — adding a stop in one file refreshes the `(idx/total)` prefix in every other file
 - **Telescope-friendly** picker via `vim.ui.select` (works with `telescope-ui-select.nvim`, `dressing.nvim`, etc.)
 
@@ -44,48 +44,49 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```vim
 :e some-file.lua
 " cursor on the entry-point line
-:TourAdd entry point         " auto-creates a "default" tour on first add
+:CodeTour add entry point     " auto-creates a "default" tour on first add
 
 :e other-file.lua
 " cursor on the dispatch handler
-:TourAdd dispatch handler
+:CodeTour add dispatch handler
 
-:TourOpen        " populate quickfix, jump to stop 1
-:cnext           " walk to stop 2
-:TourClose       " restore your prior quickfix list
+:CodeTour open    " populate quickfix, jump to stop 1
+:cnext            " walk to stop 2
+:CodeTour close   " restore your prior quickfix list
 ```
 
 Quit Neovim and reopen — the tour is still there.
 
 ## Commands
 
+Every codetour action is a subcommand of `:CodeTour`. Type `:CodeTour ` and press `<Tab>` to discover them; `:CodeTour select <Tab>` and `:CodeTour delete <Tab>` complete tour names.
+
 | Command | Description |
 |---|---|
-| **Tour management** | |
-| `:TourCreate <name>` | Create a new empty tour and make it active |
-| `:TourSelect [name]` | Switch the active tour (no arg → opens a picker) |
-| `:TourDelete [name]` | Delete a tour (with confirm) |
-| **Stops** | |
-| `:TourAdd [note...]` | Add a stop at the cursor with optional inline note |
-| `:TourRemove` | Remove the stop nearest the cursor in the current buffer |
-| `:TourNoteEdit <text>` | Replace the nearest stop's note with the given text |
-| **Navigation** | |
-| `:TourOpen` | Populate the quickfix list with the active tour, jump to stop 1 |
-| `:TourClose` | Restore the quickfix list that was active before `:TourOpen` |
-| `:TourList` | Open a picker over the active tour's stops; `<CR>` jumps |
-| `:TourNextStop` | Jump cursor to the next stop in the **current buffer** (by line). Pure cursor movement; no qf side effects |
-| `:TourPrevStop` | Jump cursor to the previous stop in the current buffer |
-| **Tour UI (oil-style)** | |
 | `:CodeTour` | Open the plugin's primary UI: an editable list of all stops with a syntax-highlighted preview. Jump with `<CR>`, reorder by moving lines, edit notes inline, remove by deleting lines. `:w` to apply atomically. |
-| **Display** | |
-| `:TourNotesVirtualTextToggle` | Hide / show all virtual-text notes |
-| `:TourDump` | Print the in-memory state to `:messages` (debug aid) |
+| **Tour management** | |
+| `:CodeTour create <name>` | Create a new empty tour and make it active |
+| `:CodeTour select [name]` | Switch the active tour (no arg → opens a picker) |
+| `:CodeTour delete [name]` | Delete a tour (with confirm) |
+| **Stops** | |
+| `:CodeTour add [note...]` | Add a stop at the cursor with optional inline note |
+| `:CodeTour remove` | Remove the stop nearest the cursor in the current buffer |
+| `:CodeTour note <text>` | Replace the nearest stop's note with the given text |
+| **Navigation** | |
+| `:CodeTour open` | Populate the quickfix list with the active tour, jump to stop 1 |
+| `:CodeTour close` | Restore the quickfix list that was active before `:CodeTour open` |
+| `:CodeTour list` | Open a picker over the active tour's stops; `<CR>` jumps |
+| `:CodeTour next-stop` | Jump cursor to the next stop in the **current buffer** (by line). Pure cursor movement; no qf side effects |
+| `:CodeTour prev-stop` | Jump cursor to the previous stop in the current buffer |
+| **Display & debug** | |
+| `:CodeTour toggle-notes` | Hide / show all virtual-text notes |
+| `:CodeTour dump` | Print the in-memory state to `:messages` (debug aid) |
 
 ## Configuration
 
 ```lua
 require("codetour").setup({
-  -- :TourClose runs :cclose. Default leaves the qf window state alone.
+  -- :CodeTour close runs :cclose. Default leaves the qf window state alone.
   close_qf_on_tour_close = false,
 
   -- Highlight group that CodetourNote links to. Override with any group name,
@@ -129,20 +130,20 @@ require("codetour").setup({
 
 | Key | Action |
 |---|---|
-| `<leader>ta` | `:TourAdd` (no note) |
+| `<leader>ta` | `:CodeTour add` (no note) |
 | `<leader>te` | edit nearest note (prompt) |
-| `<leader>tx` | `:TourRemove` |
+| `<leader>tx` | `:CodeTour remove` |
 | `<leader>tn` | `:cnext` |
 | `<leader>tp` | `:cprev` |
-| `<leader>to` | `:TourOpen` |
-| `<leader>tc` | `:TourClose` |
-| `<leader>tl` | `:TourList` (stop picker) |
-| `<leader>ts` | `:TourSelect` (tour picker) |
+| `<leader>to` | `:CodeTour open` |
+| `<leader>tc` | `:CodeTour close` |
+| `<leader>tl` | `:CodeTour list` (stop picker) |
+| `<leader>ts` | `:CodeTour select` (tour picker) |
 | `<leader>tv` | toggle virtual-text notes |
 
 ### Telescope-rendered pickers
 
-`:TourList` and `:TourSelect` use `vim.ui.select`. To render them in Telescope, install [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim):
+`:CodeTour list` and `:CodeTour select` use `vim.ui.select`. To render them in Telescope, install [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim):
 
 ```lua
 {
@@ -167,7 +168,7 @@ If you'd rather keep tours private to your clone, set `storage_path = ".git/info
 
 **Cold-load re-anchoring.** Each stop also persists a 60-char context snippet of its line. On reopen, if a file changed while nvim was closed, the plugin searches ±20 lines for the snippet and re-anchors there, notifying you that the stop drifted.
 
-**Multi-tour.** Each `:TourCreate <name>` makes a new file. `:TourSelect <name>` switches active. The active tour is what `:TourAdd`, `:TourOpen`, `:TourList`, etc. operate on.
+**Multi-tour.** Each `:CodeTour create <name>` makes a new file. `:CodeTour select <name>` switches active. The active tour is what `:CodeTour add`, `:CodeTour open`, `:CodeTour list`, etc. operate on.
 
 **`:CodeTour` (oil-style buffer).** Opens a 25/75 vsplit: editable list on the left, syntax-highlighted preview on the right that follows the cursor. Each line in the list looks like:
 
@@ -179,7 +180,7 @@ If you'd rather keep tours private to your clone, set `storage_path = ".git/info
 
 The `[N]` is the stop's identifier. Reorder by moving lines, edit the text after `─` to change a note, delete a line to drop the stop. `:w` parses the buffer and applies all changes atomically — if any line is malformed, the entire save is rejected with an error and state is left untouched. `<CR>` on a stop jumps to it (refuses if there are unsaved edits). `q` closes without saving. `:x` saves and closes.
 
-Editing `file:lnum` is ignored — those segments are display-only. Use `:TourAdd` to add new stops; `:CodeTour` is for managing existing ones.
+Editing `file:lnum` is ignored — those segments are display-only. Use `:CodeTour add` to add new stops; `:CodeTour` is for managing existing ones.
 
 ## Status
 
@@ -191,7 +192,7 @@ Active development through Phases 0–10:
 - ✅ `virt_lines` notes with configurable prefix and highlight
 - ✅ Stop dedupe, overwrite confirms, qf cursor preservation
 - ✅ Multi-tour support (replaced the original branch-awareness)
-- ✅ `:TourList` / `:TourSelect` pickers via `vim.ui.select`
+- ✅ `:CodeTour list` / `:CodeTour select` pickers via `vim.ui.select`
 - ✅ Default keymaps, edge case audit
 
 See **TODOS** below for what's next.
@@ -235,7 +236,7 @@ Bypass with `git commit --no-verify` when you really need to.
 
 - Native Telescope extension (`:Telescope codetour stops`) with split-pane
   preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline).
-  Until then, `:TourList` and `:TourSelect` use `vim.ui.select`, which
+  Until then, `:CodeTour list` and `:CodeTour select` use `vim.ui.select`, which
   upgrades transparently if the user installs
   [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim).
 - Lualine component showing the active tour name + stop count
