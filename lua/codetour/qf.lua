@@ -49,8 +49,18 @@ function M.open()
   local title = string.format("tour:%s", info and info.branch or "no-branch")
   vim.fn.setqflist({}, " ", { title = title, items = items })
 
-  vim.cmd "cfirst"
-  vim.cmd "cwindow"
+  -- Defer the side-effectful navigation. `cfirst` opens the first stop's
+  -- file, which triggers BufRead — and in configs with heavy BufRead
+  -- handlers (LSP attach, treesitter parse, gitsigns/blame, etc.) this
+  -- can take 1-2 seconds synchronously. Running it inside the user-command
+  -- callback blocks GUI redraws for that duration; in --embed UIs like
+  -- Neovide the editor looks completely frozen. vim.schedule lets the
+  -- callback return immediately, the cmdline clears, then the navigation
+  -- runs on the next event-loop tick.
+  vim.schedule(function()
+    vim.cmd "cfirst"
+    vim.cmd "cwindow"
+  end)
 end
 
 ---If a tour quickfix list is currently active (title starts with "tour:"),
