@@ -228,7 +228,10 @@ local function stop_at_cursor()
   return idx, state.data.active_tour.stops[idx]
 end
 
-local function update_preview()
+-- Exposed on M as _update_preview / _on_save / _on_enter so tests can drive
+-- the autocmd-bound callbacks directly. In production they're invoked
+-- through CursorMoved / BufWriteCmd / <CR> mapping in M.open().
+function M._update_preview()
   if not vim.api.nvim_win_is_valid(M._state.preview_winid or -1) then
     return
   end
@@ -266,7 +269,7 @@ end
 
 ---:w handler. Parse the buffer; on success, replace stops + re-render.
 ---On parse error, log + abort (buffer stays modified so user can fix).
-local function on_save()
+function M._on_save()
   local lines = vim.api.nvim_buf_get_lines(M._state.list_bufnr, 0, -1, false)
   local ok, err = M.commit(lines)
   if not ok then
@@ -283,11 +286,11 @@ local function on_save()
     M._build_buffer_lines(tour and tour.stops or {}, tour and tour.name or nil)
   )
   vim.bo[M._state.list_bufnr].modified = false
-  update_preview()
+  M._update_preview()
 end
 
 ---<CR> handler. Refuses if list buffer has unsaved edits.
-local function on_enter()
+function M._on_enter()
   if vim.bo[M._state.list_bufnr].modified then
     log.error "codetour: unsaved edits — :w to apply or :q! to discard"
     return
@@ -377,12 +380,12 @@ function M.open()
   vim.api.nvim_create_autocmd("BufWriteCmd", {
     group = M._state.augroup,
     buffer = list_bufnr,
-    callback = on_save,
+    callback = M._on_save,
   })
   vim.api.nvim_create_autocmd("CursorMoved", {
     group = M._state.augroup,
     buffer = list_bufnr,
-    callback = update_preview,
+    callback = M._update_preview,
   })
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = M._state.augroup,
@@ -390,12 +393,12 @@ function M.open()
     callback = cleanup_state,
   })
 
-  vim.keymap.set("n", "<CR>", on_enter, { buffer = list_bufnr, silent = true, desc = "codetour: jump to stop" })
+  vim.keymap.set("n", "<CR>", M._on_enter, { buffer = list_bufnr, silent = true, desc = "codetour: jump to stop" })
   vim.keymap.set("n", "q", function()
     M.close()
   end, { buffer = list_bufnr, silent = true, desc = "codetour: close edit UI" })
 
-  update_preview()
+  M._update_preview()
 end
 
 ---Tear down the UI: close preview window, wipe list buffer, restore prev win.

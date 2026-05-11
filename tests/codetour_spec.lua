@@ -1017,6 +1017,175 @@ describe("codetour.edit", function()
     assert.is_truthy(err)
     assert.equals("untouched", state.data.active_tour.stops[1].note)
   end)
+
+  -- UI lifecycle: drive the autocmd-bound handlers (_on_save, _on_enter,
+  -- _update_preview) directly rather than feedkeys-ing <CR>/`:w` which is
+  -- flaky under headless plenary. The handlers are wired into BufWriteCmd /
+  -- CursorMoved / the <CR> mapping in production; here we invoke them in
+  -- the same context (list buffer focused, _state populated).
+
+  local function setup_tour_with_stops(...)
+    local notes = { ... }
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d", "e" }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    local state = require "codetour.state"
+    for i, note in ipairs(notes) do
+      vim.api.nvim_win_set_cursor(0, { i, 0 })
+      state.add(note)
+    end
+    return tmp, state
+  end
+
+  it("_on_save commits inline note edits to the active tour", function()
+    local tmp, state = setup_tour_with_stops("first", "second")
+    edit.open()
+
+    -- Find the line in the list buffer for stop #1 and rewrite its note text.
+    local lines = vim.api.nvim_buf_get_lines(edit._state.list_bufnr, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match "^%[1%]" then
+        local rewritten = line:gsub("─%s+first", "─ REWRITTEN")
+        vim.api.nvim_buf_set_lines(edit._state.list_bufnr, i - 1, i, false, { rewritten })
+        break
+      end
+    end
+    vim.bo[edit._state.list_bufnr].modified = true
+
+    edit._on_save()
+
+    assert.equals("REWRITTEN", state.data.active_tour.stops[1].note)
+    assert.equals("second", state.data.active_tour.stops[2].note, "other stop must be unchanged")
+    assert.is_false(vim.bo[edit._state.list_bufnr].modified, "modified flag should clear after successful save")
+
+    edit.close()
+    _ = tmp
+  end)
+
+  it("_on_save leaves the buffer modified when parse fails", function()
+    local _, state = setup_tour_with_stops "only"
+    edit.open()
+
+    -- Insert a malformed line into the buffer so the parser will reject it.
+    vim.api.nvim_buf_set_lines(edit._state.list_bufnr, -1, -1, false, { "garbage line" })
+    vim.bo[edit._state.list_bufnr].modified = true
+
+    edit._on_save()
+
+    assert.is_true(vim.bo[edit._state.list_bufnr].modified, "modified should persist on parse error")
+    assert.equals("only", state.data.active_tour.stops[1].note, "state unchanged on parse error")
+
+    edit.close()
+  end)
+
+  it("_on_enter jumps prev_winid to the stop's file + lnum", function()
+    local tmp = setup_tour_with_stops("first", "second", "third")
+    local origin_winid = vim.api.nvim_get_current_win()
+    edit.open()
+
+    -- Move cursor in the list buffer to the line for stop #2.
+    local lines = vim.api.nvim_buf_get_lines(edit._state.list_bufnr, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match "^%[2%]" then
+        vim.api.nvim_win_set_cursor(edit._state.list_winid, { i, 0 })
+        break
+      end
+    end
+
+    edit._on_enter()
+
+    -- After _on_enter, prev_winid (origin) should be focused on tmp at lnum 2.
+    -- Stops carry canonical paths (state.add canonicalises on insert), and
+    -- nvim_buf_get_name returns whatever the buffer was :edit-ed with — also
+    -- canonical here since `state.add → state.add → Tour.add_stop` round-trips
+    -- through the canonical filename. Compare via util.canonical to handle
+    -- /tmp vs /private/tmp on macOS.
+    local util = require "codetour.util"
+    assert.equals(origin_winid, vim.api.nvim_get_current_win())
+    assert.equals(util.canonical(tmp), util.canonical(vim.api.nvim_buf_get_name(0)))
+    assert.equals(2, vim.api.nvim_win_get_cursor(0)[1])
+  end)
+
+  it("_on_enter refuses when the list buffer has unsaved edits", function()
+    local _ = setup_tour_with_stops "only"
+    edit.open()
+    local list_buf = edit._state.list_bufnr
+    local list_win = edit._state.list_winid
+
+    -- Mark the buffer modified without changing anything semantic.
+    vim.bo[list_buf].modified = true
+
+    -- Capture the warning we expect _on_enter to emit.
+    local captured
+    local original_notify = vim.notify
+    vim.notify = function(msg, _)
+      captured = msg
+    end
+
+    edit._on_enter()
+
+    vim.notify = original_notify
+    assert.is_truthy(captured and captured:match "unsaved edits")
+    -- UI should still be up (no close on refuse).
+    assert.is_true(vim.api.nvim_win_is_valid(list_win), "list window must still be open")
+    assert.equals(list_win, vim.api.nvim_get_current_win())
+
+    edit.close()
+  end)
+
+  it("_update_preview points the preview window at the stop's file", function()
+    local tmpA = vim.fn.tempname() .. "_a.lua"
+    local tmpB = vim.fn.tempname() .. "_b.lua"
+    vim.fn.writefile({ "alpha 1", "alpha 2", "alpha 3" }, tmpA)
+    vim.fn.writefile({ "beta 1", "beta 2", "beta 3" }, tmpB)
+
+    vim.cmd("e " .. vim.fn.fnameescape(tmpA))
+    local state = require "codetour.state"
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    state.add "in A"
+    vim.cmd("e " .. vim.fn.fnameescape(tmpB))
+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
+    state.add "in B"
+
+    edit.open()
+
+    -- Move cursor to stop #2 (file B) in the list buffer and fire _update_preview.
+    local lines = vim.api.nvim_buf_get_lines(edit._state.list_bufnr, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match "^%[2%]" then
+        vim.api.nvim_win_set_cursor(edit._state.list_winid, { i, 0 })
+        break
+      end
+    end
+    edit._update_preview()
+
+    local preview_lines = vim.api.nvim_buf_get_lines(edit._state.preview_bufnr, 0, -1, false)
+    assert.equals("beta 1", preview_lines[1], "preview must show file B's content")
+    assert.equals(2, vim.api.nvim_win_get_cursor(edit._state.preview_winid)[1], "preview cursor on stop's lnum")
+
+    edit.close()
+  end)
+
+  it("close() tears down list buf and clears _state cleanly", function()
+    local _ = setup_tour_with_stops "stop"
+    edit.open()
+    local list_buf = edit._state.list_bufnr
+    assert.is_not_nil(edit._state.augroup)
+    assert.is_not_nil(edit._state.list_winid)
+    assert.is_not_nil(edit._state.preview_winid)
+
+    edit.close()
+
+    -- _state cleared: BufWipeout fires cleanup_state which nils every field.
+    assert.is_nil(edit._state.list_bufnr)
+    assert.is_nil(edit._state.list_winid)
+    assert.is_nil(edit._state.preview_winid)
+    assert.is_nil(edit._state.augroup)
+    -- The list buffer was wiped. (Window validity is nvim-internal: when a
+    -- wiped buffer was displayed, nvim replaces it with an unnamed buffer
+    -- in that window rather than closing the window outright.)
+    assert.is_false(vim.api.nvim_buf_is_valid(list_buf))
+  end)
 end)
 
 describe("codetour.signs", function()
