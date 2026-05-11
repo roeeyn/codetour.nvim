@@ -152,6 +152,63 @@ function M.row_of(bufnr, stop_id)
   return pos and pos[1] or nil
 end
 
+---Detect drift for a stop whose file is NOT currently loaded as a buffer.
+---Reads the file from disk and searches ±SEARCH_RADIUS lines around the
+---persisted lnum for `stop.context`. Updates stop.lnum in-place if found.
+---
+---Why this exists: anchor.attach is the buffer-side drift detector — it
+---only runs on BufRead. Stops whose files weren't opened yet (e.g. you
+---restart nvim with `nvim other.lua` while the tour contains stops in
+---a.lua and b.lua) keep their pre-drift persisted lnum until they're
+---navigated to. By then qf.open or the picker has already built entries
+---pointing at the wrong line. Running this on tour activation gives every
+---consumer a fresh lnum without needing to load the file first.
+---@param stop CodeTour.Stop
+function M.detect_drift_offline(stop)
+  if stop == nil or stop.context == nil or stop.context == "" then
+    return
+  end
+  if stop.file == nil or vim.fn.filereadable(stop.file) == 0 then
+    return
+  end
+  local ok, lines = pcall(vim.fn.readfile, stop.file)
+  if not ok or lines == nil or #lines == 0 then
+    return
+  end
+
+  local util = require "codetour.util"
+  local line_count = #lines
+  local stored_row = math.max(0, (stop.lnum or 1) - 1)
+  stored_row = math.min(stored_row, math.max(0, line_count - 1))
+
+  local current = lines[stored_row + 1] or ""
+  if util.trim_context(current) == stop.context then
+    return -- no drift
+  end
+
+  for offset = 1, SEARCH_RADIUS do
+    for _, candidate in ipairs { stored_row - offset, stored_row + offset } do
+      if candidate >= 0 and candidate < line_count then
+        local line = lines[candidate + 1] or ""
+        if util.trim_context(line) == stop.context then
+          local original_lnum = stop.lnum or 1
+          stop.lnum = candidate + 1
+          stop.col = 0
+          require("codetour.log").warn(
+            string.format(
+              "codetour: stop in %s drifted from line %d to %d (offline)",
+              vim.fn.fnamemodify(stop.file, ":t"),
+              original_lnum,
+              stop.lnum
+            )
+          )
+          return
+        end
+      end
+    end
+  end
+end
+
 ---Drop the extmark for one specific stop across every buffer that tracked it.
 ---Used when removing a single stop without rebuilding the rest.
 ---@param stop_id integer

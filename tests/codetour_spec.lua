@@ -612,6 +612,63 @@ describe("codetour.anchor", function()
     anchor.refresh(stops)
     assert.equals("function foo_renamed()", stops[1].context)
   end)
+
+  it("detect_drift_offline() updates stop.lnum when the file drifted on disk", function()
+    -- Write a file with a known context line at position 5.
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({
+      "old line 1",
+      "old line 2",
+      "old line 3",
+      "old line 4",
+      "function dispatch(args)",
+      "old line 6",
+    }, tmp)
+
+    local stop = { file = tmp, lnum = 5, col = 0, note = "", context = "function dispatch(args)" }
+
+    -- Without touching the file, offline drift detection should be a no-op
+    -- (context still matches at line 5).
+    anchor.detect_drift_offline(stop)
+    assert.equals(5, stop.lnum, "no drift expected when file is unchanged")
+
+    -- Now prepend 2 lines on disk; the context line moves to line 7.
+    vim.fn.writefile({
+      "NEW line A",
+      "NEW line B",
+      "old line 1",
+      "old line 2",
+      "old line 3",
+      "old line 4",
+      "function dispatch(args)",
+      "old line 6",
+    }, tmp)
+
+    anchor.detect_drift_offline(stop)
+    assert.equals(7, stop.lnum, "offline drift should re-anchor to the new line")
+  end)
+
+  it("detect_drift_offline() is a no-op when the file is missing or has no context", function()
+    -- Missing file
+    local stop1 = { file = "/nonexistent/path.lua", lnum = 5, col = 0, note = "", context = "anything" }
+    anchor.detect_drift_offline(stop1)
+    assert.equals(5, stop1.lnum, "missing file: lnum unchanged")
+
+    -- No context to search for
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c" }, tmp)
+    local stop2 = { file = tmp, lnum = 2, col = 0, note = "", context = "" }
+    anchor.detect_drift_offline(stop2)
+    assert.equals(2, stop2.lnum, "empty context: lnum unchanged (we'd have nothing to search for)")
+  end)
+
+  it("detect_drift_offline() leaves lnum alone when context cannot be found anywhere", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "totally", "unrelated", "content" }, tmp)
+    local stop = { file = tmp, lnum = 2, col = 0, note = "", context = "function dispatch(args)" }
+    anchor.detect_drift_offline(stop)
+    assert.equals(2, stop.lnum, "no context match: stop stays at its persisted lnum")
+  end)
 end)
 
 describe("codetour.notes", function()
@@ -1665,6 +1722,52 @@ describe("codetour.state", function()
     fresh.ensure_loaded()
     assert.is_nil(fresh.data.active_tour, "phantom pointer should be cleared")
     assert.is_nil(storage.read_active())
+  end)
+
+  it("ensure_loaded() detects offline drift for stops whose files aren't loaded", function()
+    -- Set up: write a file with a known context line and persist a tour
+    -- pointing at it. Then modify the file on disk to shift the content.
+    -- On a fresh ensure_loaded() (file not loaded as a buffer), the stop's
+    -- lnum should reflect the post-drift position — not the persisted one.
+    -- This is the bug reported in the manual smoke test: qf was pointing
+    -- to the pre-drift line while virt_lines (set on later BufRead) were
+    -- at the post-drift line.
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({
+      "line 1",
+      "line 2",
+      "line 3",
+      "function dispatch(args)",
+      "line 5",
+    }, tmp)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    state.add "dispatch"
+    assert.equals(4, state.data.active_tour.stops[1].lnum)
+
+    -- Wipe the buffer so the file is no longer loaded — this is critical;
+    -- otherwise BufRead would handle drift via the extmark path on reload.
+    vim.cmd("bwipeout! " .. vim.fn.fnameescape(tmp))
+
+    -- Now drift the file on disk (prepend 2 lines).
+    vim.fn.writefile({
+      "NEW preamble 1",
+      "NEW preamble 2",
+      "line 1",
+      "line 2",
+      "line 3",
+      "function dispatch(args)",
+      "line 5",
+    }, tmp)
+
+    -- Force a cold reload of state. ensure_loaded should run offline drift
+    -- detection and update stop.lnum to 6 (its new position).
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.anchor"] = nil
+    local fresh = require "codetour.state"
+    fresh.ensure_loaded()
+
+    assert.equals(6, fresh.data.active_tour.stops[1].lnum, "offline drift should re-anchor before any buffer load")
   end)
 
   it("add() auto-creates 'default' tour for friction-free first use", function()

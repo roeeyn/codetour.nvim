@@ -33,6 +33,31 @@ function M.stops()
   return M.data.active_tour.stops
 end
 
+---Run offline drift detection against every stop in `tour` whose file is
+---not currently loaded as a buffer. Files that ARE loaded already have an
+---authoritative position via anchor.attach on BufRead, so we skip those
+---(both to avoid redundant disk reads and to avoid overwriting an in-buf
+---extmark position with a stale persisted value).
+---@param tour CodeTour.Tour
+local function detect_offline_drift(tour)
+  local util = require "codetour.util"
+  local loaded_paths = {}
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      local p = util.canonical(vim.api.nvim_buf_get_name(bufnr))
+      if p then
+        loaded_paths[p] = true
+      end
+    end
+  end
+  local anchor = require "codetour.anchor"
+  for _, stop in ipairs(tour.stops) do
+    if not loaded_paths[util.canonical(stop.file) or stop.file] then
+      anchor.detect_drift_offline(stop)
+    end
+  end
+end
+
 local function save()
   if M.data.active_tour == nil then
     return
@@ -62,6 +87,7 @@ function M.ensure_loaded()
     return
   end
 
+  detect_offline_drift(tour)
   M.data.active_tour = tour
 end
 
@@ -138,6 +164,7 @@ function M.select(name)
   end
 
   reset_in_memory()
+  detect_offline_drift(tour)
   M.data.active_tour = tour
   storage.write_active(name)
   rehydrate_all_buffers()
