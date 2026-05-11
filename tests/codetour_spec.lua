@@ -1250,6 +1250,136 @@ describe("codetour.picker", function()
   end)
 end)
 
+describe("codetour.qf", function()
+  local original_cwd
+  local repo
+  local qf
+
+  before_each(function()
+    original_cwd = vim.fn.getcwd()
+    repo = tmpdir()
+    init_git_repo(repo)
+    vim.cmd("cd " .. vim.fn.fnameescape(repo))
+    -- Force-reload qf and its transitive deps so qf_backup (module-local)
+    -- starts as nil and each test exercises its own snapshot/restore lifecycle.
+    package.loaded["codetour.qf"] = nil
+    package.loaded["codetour.state"] = nil
+    package.loaded["codetour.anchor"] = nil
+    package.loaded["codetour.notes"] = nil
+    package.loaded["codetour.signs"] = nil
+    qf = require "codetour.qf"
+  end)
+  after_each(function()
+    -- Reset the qf list so cross-test contamination doesn't leak
+    pcall(vim.fn.setqflist, {}, "r", { items = {}, title = "" })
+    vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
+  end)
+
+  local function add_stop(state, tmp, lnum, note)
+    vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    vim.api.nvim_win_set_cursor(0, { lnum, 0 })
+    state.add(note)
+  end
+
+  it("open() warns and bails when there are no stops", function()
+    local state = require "codetour.state"
+    state.create "empty"
+    local captured
+    local original_notify = vim.notify
+    vim.notify = function(msg, _)
+      captured = msg
+    end
+    qf.open()
+    vim.notify = original_notify
+    assert.is_truthy(captured and captured:match "no stops to open")
+    assert.equals(0, #vim.fn.getqflist())
+  end)
+
+  it("open() populates qf with one item per stop, correct filename/lnum/col/text", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a", "b", "c", "d" }, tmp)
+    local state = require "codetour.state"
+    add_stop(state, tmp, 1, "first")
+    add_stop(state, tmp, 3, "third")
+
+    qf.open()
+
+    local items = vim.fn.getqflist()
+    assert.equals(2, #items)
+    assert.equals(1, items[1].lnum)
+    assert.equals("first", items[1].text)
+    assert.equals(3, items[2].lnum)
+    assert.equals("third", items[2].text)
+  end)
+
+  it("open() sets title 'tour:<branch>'", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a" }, tmp)
+    local state = require "codetour.state"
+    add_stop(state, tmp, 1, "x")
+
+    qf.open()
+    local title = (vim.fn.getqflist { title = 1 } or {}).title or ""
+    assert.is_truthy(title:match "^tour:")
+    assert.is_truthy(title:match "main", "branch should appear in title: " .. title)
+  end)
+
+  it("open() snapshots a prior non-tour qf list; close() restores it", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a" }, tmp)
+    local state = require "codetour.state"
+    add_stop(state, tmp, 1, "stop")
+
+    -- Stage a "prior" :grep-like qf list
+    vim.fn.setqflist({}, " ", {
+      title = "[grep] foo",
+      items = { { filename = tmp, lnum = 1, col = 1, text = "grep hit" } },
+    })
+
+    qf.open() -- snapshots the grep list, replaces with tour items
+    local mid_title = (vim.fn.getqflist { title = 1 } or {}).title or ""
+    assert.is_truthy(mid_title:match "^tour:", "qf should now be the tour list")
+
+    qf.close()
+    local restored = vim.fn.getqflist { title = 1, items = 1 } or {}
+    assert.equals("[grep] foo", restored.title)
+    assert.equals(1, #restored.items)
+    assert.equals("grep hit", restored.items[1].text)
+  end)
+
+  it("close() with no prior backup clears the qf list", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a" }, tmp)
+    local state = require "codetour.state"
+    add_stop(state, tmp, 1, "stop")
+
+    -- No prior qf — close before open should still no-crash and leave qf empty
+    qf.close()
+    assert.equals(0, #vim.fn.getqflist())
+    assert.equals("", (vim.fn.getqflist { title = 1 } or {}).title or "")
+  end)
+
+  it("open() is idempotent: a second call while in a tour does not re-snapshot", function()
+    local tmp = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "a" }, tmp)
+    local state = require "codetour.state"
+    add_stop(state, tmp, 1, "stop")
+
+    vim.fn.setqflist({}, " ", {
+      title = "[grep] real-prior",
+      items = { { filename = tmp, lnum = 1, col = 1, text = "real-prior hit" } },
+    })
+
+    qf.open() -- snapshots "real-prior"
+    qf.open() -- if this re-snapshots, the backup becomes the tour list and close() can't restore
+
+    qf.close()
+    local restored = vim.fn.getqflist { title = 1, items = 1 } or {}
+    assert.equals("[grep] real-prior", restored.title, "second open() must not have clobbered the backup")
+    assert.equals("real-prior hit", restored.items[1].text)
+  end)
+end)
+
 describe("codetour.state", function()
   local state
   local original_cwd
