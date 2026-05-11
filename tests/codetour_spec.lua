@@ -181,6 +181,179 @@ describe("codetour.util", function()
   end)
 end)
 
+describe("codetour.tour", function()
+  local Tour
+
+  before_each(function()
+    package.loaded["codetour.tour"] = nil
+    Tour = require "codetour.tour"
+  end)
+
+  it("new() creates a tour with a name and an empty stops list", function()
+    local t = Tour.new "auth"
+    assert.equals("auth", t.name)
+    assert.equals(0, #t.stops)
+  end)
+
+  it("add_stop() appends a stop and returns ok", function()
+    local t = Tour.new "auth"
+    local ok = Tour.add_stop(t, { file = "/abs/foo.lua", lnum = 10, col = 0, note = "entry", context = "" })
+    assert.is_true(ok)
+    assert.equals(1, #t.stops)
+    assert.equals("entry", t.stops[1].note)
+  end)
+
+  it("add_stop() refuses a duplicate (file, lnum)", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/abs/foo.lua", lnum = 10, col = 0, note = "first", context = "" })
+    local ok, err = Tour.add_stop(t, { file = "/abs/foo.lua", lnum = 10, col = 0, note = "second", context = "" })
+    assert.is_false(ok)
+    assert.is_truthy(err:match "already exists")
+    assert.equals(1, #t.stops)
+    assert.equals("first", t.stops[1].note)
+  end)
+
+  it("add_stop() allows the same lnum in different files", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/abs/foo.lua", lnum = 10, col = 0, note = "in foo", context = "" })
+    local ok = Tour.add_stop(t, { file = "/abs/bar.lua", lnum = 10, col = 0, note = "in bar", context = "" })
+    assert.is_true(ok)
+    assert.equals(2, #t.stops)
+  end)
+
+  it("remove_stop() drops the stop at idx and returns it", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "first", context = "" })
+    Tour.add_stop(t, { file = "/b", lnum = 1, col = 0, note = "second", context = "" })
+    local removed, err = Tour.remove_stop(t, 1)
+    assert.is_nil(err)
+    assert.equals("first", removed.note)
+    assert.equals(1, #t.stops)
+    assert.equals("second", t.stops[1].note)
+  end)
+
+  it("remove_stop() errors on out-of-range idx", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "only", context = "" })
+    local removed, err = Tour.remove_stop(t, 5)
+    assert.is_nil(removed)
+    assert.is_truthy(err:match "doesn't exist")
+    assert.equals(1, #t.stops)
+  end)
+
+  it("remove_stop() errors on nil idx", function()
+    local t = Tour.new "auth"
+    local removed, err = Tour.remove_stop(t, nil)
+    assert.is_nil(removed)
+    assert.is_truthy(err)
+  end)
+
+  it("update_note() replaces the note text", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "old", context = "" })
+    local ok = Tour.update_note(t, 1, "new")
+    assert.is_true(ok)
+    assert.equals("new", t.stops[1].note)
+  end)
+
+  it("update_note() errors on out-of-range idx", function()
+    local t = Tour.new "auth"
+    local ok, err = Tour.update_note(t, 1, "x")
+    assert.is_false(ok)
+    assert.is_truthy(err)
+  end)
+
+  it("update_note() with nil text coerces to empty string", function()
+    -- Tour itself accepts empty/nil text; rejection of empty input is a
+    -- state.lua / user-input concern, not a Tour invariant.
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "before", context = "" })
+    Tour.update_note(t, 1, nil)
+    assert.equals("", t.stops[1].note)
+  end)
+
+  it("replace_stops() swaps the entire list", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "one", context = "" })
+    Tour.add_stop(t, { file = "/b", lnum = 1, col = 0, note = "two", context = "" })
+    local ok = Tour.replace_stops(t, {
+      { file = "/c", lnum = 1, col = 0, note = "three", context = "" },
+    })
+    assert.is_true(ok)
+    assert.equals(1, #t.stops)
+    assert.equals("three", t.stops[1].note)
+  end)
+
+  it("replace_stops() allows an empty list", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "x", context = "" })
+    local ok = Tour.replace_stops(t, {})
+    assert.is_true(ok)
+    assert.equals(0, #t.stops)
+  end)
+
+  it("replace_stops() refuses duplicate (file, lnum) entries in the new list", function()
+    local t = Tour.new "auth"
+    local ok, err = Tour.replace_stops(t, {
+      { file = "/a", lnum = 1, col = 0, note = "one", context = "" },
+      { file = "/a", lnum = 1, col = 0, note = "two", context = "" },
+    })
+    assert.is_false(ok)
+    assert.is_truthy(err:match "duplicate")
+    -- Original (empty) list left intact since validation failed
+    assert.equals(0, #t.stops)
+  end)
+
+  it("has_stop_at() finds a matching (file, lnum) pair", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 3, col = 0, note = "x", context = "" })
+    assert.is_true(Tour.has_stop_at(t, "/a", 3))
+    assert.is_false(Tour.has_stop_at(t, "/a", 4))
+    assert.is_false(Tour.has_stop_at(t, "/b", 3))
+  end)
+
+  it("nearest_stop_idx() returns the closest stop by lnum in the same file", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 5, col = 0, note = "first", context = "" })
+    Tour.add_stop(t, { file = "/a", lnum = 15, col = 0, note = "second", context = "" })
+    Tour.add_stop(t, { file = "/b", lnum = 7, col = 0, note = "other file", context = "" })
+    -- Cursor at lnum 7 in /a: stop #1 (lnum 5, dist 2) beats #2 (lnum 15, dist 8)
+    assert.equals(1, Tour.nearest_stop_idx(t, "/a", 7))
+    -- Cursor at lnum 12 in /a: stop #2 (lnum 15, dist 3) beats #1 (lnum 5, dist 7)
+    assert.equals(2, Tour.nearest_stop_idx(t, "/a", 12))
+  end)
+
+  it("nearest_stop_idx() returns nil when no stop lives in this file", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "x", context = "" })
+    assert.is_nil(Tour.nearest_stop_idx(t, "/b", 1))
+  end)
+
+  it("adjacent_stop() walks stops in the same file sorted by lnum", function()
+    local t = Tour.new "auth"
+    -- Added out of order to verify the sort is by lnum, not insertion order.
+    Tour.add_stop(t, { file = "/a", lnum = 5, col = 0, note = "middle", context = "" })
+    Tour.add_stop(t, { file = "/a", lnum = 2, col = 0, note = "first", context = "" })
+    Tour.add_stop(t, { file = "/a", lnum = 8, col = 0, note = "last", context = "" })
+
+    assert.equals("middle", Tour.adjacent_stop(t, "/a", 2, "next").note)
+    assert.equals("last", Tour.adjacent_stop(t, "/a", 5, "next").note)
+    assert.is_nil(Tour.adjacent_stop(t, "/a", 8, "next"))
+
+    assert.equals("middle", Tour.adjacent_stop(t, "/a", 8, "prev").note)
+    assert.equals("first", Tour.adjacent_stop(t, "/a", 5, "prev").note)
+    assert.is_nil(Tour.adjacent_stop(t, "/a", 2, "prev"))
+  end)
+
+  it("adjacent_stop() ignores stops in other files", function()
+    local t = Tour.new "auth"
+    Tour.add_stop(t, { file = "/a", lnum = 1, col = 0, note = "in a", context = "" })
+    Tour.add_stop(t, { file = "/b", lnum = 10, col = 0, note = "in b", context = "" })
+    -- Nothing in /a beyond lnum 5 — /b's lnum 10 doesn't count.
+    assert.is_nil(Tour.adjacent_stop(t, "/a", 5, "next"))
+  end)
+end)
+
 describe("codetour.anchor", function()
   local anchor
 

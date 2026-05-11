@@ -1,0 +1,60 @@
+# Context
+
+Domain vocabulary for codetour.nvim. Use these terms exactly when discussing
+the plugin's architecture or behaviour. Architecture terms (Module, Interface,
+Depth, Seam) live in the team's `improve-codebase-architecture` skill — this
+file covers only domain-specific concepts.
+
+## Terms
+
+**Tour**
+A named, ordered list of Stops, persisted as a single JSON file under the
+configured `storage_path`. The unit a user creates, switches between, and
+walks with the quickfix list. Tour is a pure data module — it has no
+dependencies on storage, vim, or notify; state.lua orchestrates persistence
+and side effects on its behalf.
+_Avoid_: "path", "trail", "session" — they suggest temporary or implicit
+structure, but a Tour is a deliberately-curated, named artifact.
+
+**Stop**
+One position in a Tour: file (absolute path in memory, relativised on save),
+1-indexed line number, 0-indexed byte column, free-text note, and a trimmed
+context snippet for cold-load re-anchoring.
+_Avoid_: "bookmark", "mark" — those suggest unordered task-switching
+primitives (harpoon, vim marks), which is the exact niche codetour is
+positioned against.
+
+**Note**
+The user-authored prose attached to a Stop. Rendered as a virtual line above
+the code. Empty string when not yet written.
+
+**Active Tour**
+The one Tour currently held in memory. `state.data.active_tour` holds at most
+one Tour at a time. Mutations (`:TourAdd`, `:TourRemove`, `:TourNoteEdit`,
+etc.) operate on the Active Tour. Switching tours (`:TourSelect billing`)
+drops the previous Active Tour from memory and reads the new one from disk.
+
+**Anchor**
+A Neovim extmark that tracks a Stop's live position in a loaded buffer.
+Anchors update automatically as lines are inserted or deleted above the
+Stop. Each loaded buffer has at most one Anchor per Stop.
+
+**Drift**
+The condition where a Stop's stored `lnum` no longer points at the line whose
+content was recorded in its context snippet — typically because the file
+was edited while nvim was closed. On cold-load the anchor module scans
+±20 lines around the stored `lnum` for the matching context, then
+re-anchors and notifies the user the Stop drifted.
+
+**Decoration**
+The visual layers rendered at a Stop's live position in a buffer: the note's
+virtual line above the code, and the sign-column marker. Currently split
+across `anchor.lua`, `notes.lua`, and `signs.lua` — a future deepening
+would collapse those siblings behind one seam.
+
+**Tour Quickfix**
+A quickfix list whose title starts with `tour:`. Built by `:TourOpen` from the
+Active Tour's stops, and mutated in place when the Active Tour changes.
+Distinct from any non-tour quickfix list (`:grep` hits, LSP diagnostics) —
+`:TourClose` restores whichever non-tour list was active before
+`:TourOpen` snapshotted it.
