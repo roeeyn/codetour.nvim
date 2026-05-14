@@ -66,7 +66,13 @@ Field rules:
 | `stop.note` | Short prose: *why this stop matters*. One sentence ideal. See the note-writing rules below. |
 | `stop.context` | Trimmed first ≤60 chars of the **actual line at `lnum`**. Used at runtime to recover the stop's position if lines drift above it. |
 
-A second file at `<repo>/.codetour/_active_tour.txt` is a plain-text pointer (one line, the tour's name, no extension). This is the tour `:CodeTour open` operates on. Only write it if the user explicitly wants the new tour to be the active one.
+A second file at `<repo>/.codetour/_active_tour.txt` is a plain-text pointer (one line, the tour's name, no extension). It records which tour was "open" most recently. On nvim startup the plugin auto-opens this tour (decorations + qf list both on) when the user's config has `auto_open_last_tour = true` (the default). Writing this file means "make this the tour that's open by default."
+
+### Tour states: open vs. not
+
+A tour is either **open** in nvim (decorations rendered in buffers, quickfix list populated, mutations like `:CodeTour add` allowed) or **not** (nothing visible, mutations refused). The pointer file controls which tour is open by default; `:CodeTour open <name>` switches; `:CodeTour close` releases the open tour (decorations off, qf restored) but keeps the pointer so the same tour reopens later.
+
+Your job as the skill is to *write the JSON files*. Whether the user's running nvim picks them up immediately depends on what they do next: either restart nvim (auto-open reads the pointer) or run `:CodeTour open <name>` manually. The skill itself doesn't reach into the running nvim — but it can leave the pointer in the right state so the user's natural next action ("just restart" or "just `:CodeTour open`") works.
 
 ### Why `context` matters so much
 
@@ -99,7 +105,7 @@ Examples:
 
 **Step 6 — Write the JSON file** to `<repo>/.codetour/<tour-name>.json`. Create the `.codetour` directory if it doesn't exist.
 
-**Step 7 — (Optional) Activate.** If the user wants to immediately walk the tour with `:CodeTour open`, write the tour name to `<repo>/.codetour/_active_tour.txt`. If a different tour is already active and the user didn't ask to switch, leave the pointer file alone — they may be in the middle of walking it.
+**Step 7 — Update the pointer (usually yes).** Write the tour name to `<repo>/.codetour/_active_tour.txt` so the next nvim startup auto-opens this tour. Default to *doing* this when you've just created a tour the user asked for — they almost certainly want to walk it. **Skip** this step if (a) the user explicitly said *"create a tour but don't switch to it"*, or (b) `_active_tour.txt` already names a different tour that the user is currently walking — overwriting would yank them out of their current tour the next time nvim starts. When unsure, leave the existing pointer alone and tell the user to run `:CodeTour open <name>` themselves.
 
 **Stop count.** Sweet spot is 3–7 stops. Fewer than 3 isn't really a trail; more than 7 starts to feel like documentation. If the user's request seems to demand more, **ask whether to split into two tours** (e.g., `auth-login-flow` and `auth-middleware-flow`) rather than dump everything into one.
 
@@ -128,7 +134,12 @@ Re-read the file you just wrote and verify:
 - JSON parses (no trailing commas, no comments).
 - The `.codetour/` directory and tour file exist.
 
-When everything checks out, tell the user the tour was created (or amended) and point at the file path. If they want to walk it immediately and you didn't update `_active_tour.txt`, suggest they run `:CodeTour select <name>` followed by `:CodeTour open`.
+When everything checks out, tell the user the tour was created (or amended) and point at the file path. Tell them how to start walking it:
+
+- If you wrote `_active_tour.txt`: *"The tour is set as the active one — restart nvim (auto-open will pick it up) or run `:CodeTour open <name>` to start now."*
+- If you didn't write the pointer: *"Run `:CodeTour open <name>` to start walking it."*
+
+For amendments, if their nvim already has the tour open, the in-memory state won't pick up the file change automatically. Tell them to run `:CodeTour open <name>` (re-opening is idempotent — it re-reads from disk and refreshes decorations).
 
 ## Anti-patterns
 
@@ -137,7 +148,7 @@ When everything checks out, tell the user the tour was created (or amended) and 
 - **Don't pack 20 stops into one tour.** Three to seven is the sweet spot. Ask the user to split if there's more.
 - **Don't use absolute paths in `file`.** Always relative to the git root. If the target file is outside the repo, the stop can't exist.
 - **Don't invent line numbers.** Always Grep-then-Read to confirm before writing.
-- **Don't overwrite `_active_tour.txt` unsolicited.** The user may be walking another tour right now.
+- **Don't overwrite `_active_tour.txt` to a different tour the user didn't ask about.** It controls which tour auto-opens next nvim start; clobbering it pulls them out of the tour they were walking. Writing it to a tour you *just created at their request* is fine — that's what they wanted. Writing it during an *amend* of a different tour is not.
 - **Don't reuse IDs.** Even after a removal, `next_id` keeps climbing. This is intentional — anything that captured the old ID (an in-memory state, an open quickfix list) stays correct.
 
 ## Domain glossary (canonical defs)
