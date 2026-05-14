@@ -29,10 +29,15 @@ The user-authored prose attached to a Stop. Rendered as a virtual line above
 the code. Empty string when not yet written.
 
 **Active Tour**
-The one Tour currently held in memory. `state.data.active_tour` holds at most
-one Tour at a time. Mutations (`:TourAdd`, `:TourRemove`, `:TourNoteEdit`,
-etc.) operate on the Active Tour. Switching tours (`:TourSelect billing`)
-drops the previous Active Tour from memory and reads the new one from disk.
+The one Tour currently **open** — held in memory *and* visible. While a
+tour is the Active Tour, its stops are decorated in every loaded buffer
+(virt_lines + signs) and populated as the quickfix list. All mutations
+(`:CodeTour add`, `:CodeTour remove`, `:CodeTour note`,
+`:CodeTour rename`) target the Active Tour; they refuse with an error if
+no tour is open. At most one tour is active at a time. `:CodeTour open`
+makes a tour active; `:CodeTour close` releases it (decorations off, qf
+restored, but the on-disk pointer is kept so the same tour reopens next
+session if `auto_open_last_tour` is on).
 
 **Anchor**
 A Neovim extmark that tracks a Stop's live position in a loaded buffer.

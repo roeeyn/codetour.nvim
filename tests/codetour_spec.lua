@@ -955,6 +955,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b", "c" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
     vim.api.nvim_win_set_cursor(0, { 2, 0 })
@@ -973,6 +974,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "only"
 
@@ -987,6 +989,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b", "c" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "alpha"
     vim.api.nvim_win_set_cursor(0, { 2, 0 })
@@ -1012,6 +1015,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "original"
 
@@ -1027,7 +1031,7 @@ describe("codetour.edit", function()
     assert.equals("rewritten", state.data.active_tour.stops[1].note)
   end)
 
-  it("open() warns and bails when there is no active tour", function()
+  it("open() warns and bails when no tour is open", function()
     local original = vim.notify
     local captured
     vim.notify = function(msg, level)
@@ -1035,7 +1039,7 @@ describe("codetour.edit", function()
     end
     edit.open()
     vim.notify = original
-    assert.is_truthy(captured.msg:match "no active tour")
+    assert.is_truthy(captured.msg:match "no tour is open")
     -- No list/preview windows created
     assert.is_nil(edit._state.list_winid)
   end)
@@ -1045,6 +1049,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b", "c" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "smoke"
 
@@ -1066,6 +1071,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "untouched"
 
@@ -1087,6 +1093,7 @@ describe("codetour.edit", function()
     vim.fn.writefile({ "a", "b", "c", "d", "e" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     for i, note in ipairs(notes) do
       vim.api.nvim_win_set_cursor(0, { i, 0 })
       state.add(note)
@@ -1198,6 +1205,7 @@ describe("codetour.edit", function()
 
     vim.cmd("e " .. vim.fn.fnameescape(tmpA))
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "in A"
     vim.cmd("e " .. vim.fn.fnameescape(tmpB))
@@ -1408,6 +1416,7 @@ describe("codetour.picker", function()
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
 
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
@@ -1494,6 +1503,9 @@ describe("codetour.qf", function()
     package.loaded["codetour.notes"] = nil
     package.loaded["codetour.signs"] = nil
     qf = require "codetour.qf"
+    -- Reset qf list so leftover items from previous describe blocks don't
+    -- confuse "expected empty qf" assertions.
+    pcall(vim.fn.setqflist, {}, "r", { items = {}, title = "" })
   end)
   after_each(function()
     -- Reset the qf list so cross-test contamination doesn't leak
@@ -1525,6 +1537,7 @@ describe("codetour.qf", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a", "b", "c", "d" }, tmp)
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     add_stop(state, tmp, 1, "first")
     add_stop(state, tmp, 3, "third")
 
@@ -1542,6 +1555,7 @@ describe("codetour.qf", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a" }, tmp)
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     add_stop(state, tmp, 1, "x")
 
     qf.open()
@@ -1554,6 +1568,7 @@ describe("codetour.qf", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a" }, tmp)
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     add_stop(state, tmp, 1, "stop")
 
     -- Stage a "prior" :grep-like qf list
@@ -1577,6 +1592,7 @@ describe("codetour.qf", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a" }, tmp)
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     add_stop(state, tmp, 1, "stop")
 
     -- No prior qf — close before open should still no-crash and leave qf empty
@@ -1589,6 +1605,7 @@ describe("codetour.qf", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "a" }, tmp)
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     add_stop(state, tmp, 1, "stop")
 
     vim.fn.setqflist({}, " ", {
@@ -1658,7 +1675,7 @@ describe("codetour.state", function()
     assert.same({ "auth" }, storage.list_tours())
   end)
 
-  it("select() switches the active tour and reloads its stops", function()
+  it("open() switches the active tour and reloads its stops", function()
     state.create "auth"
     -- pretend we added a stop manually
     state.data.active_tour.stops = { { file = "/x", lnum = 1, col = 0, note = "auth-stop", context = "" } }
@@ -1668,14 +1685,14 @@ describe("codetour.state", function()
     assert.equals("billing", state.data.active_tour.name)
     assert.equals(0, #state.data.active_tour.stops)
 
-    state.select "auth"
+    state.open "auth"
     assert.equals("auth", state.data.active_tour.name)
     assert.equals("auth-stop", state.data.active_tour.stops[1].note)
   end)
 
-  it("select() warns and no-ops when the tour doesn't exist", function()
+  it("open() warns and no-ops when the tour doesn't exist", function()
     state.create "auth"
-    state.select "nope"
+    state.open "nope"
     assert.equals("auth", state.data.active_tour.name, "active tour should be unchanged")
   end)
 
@@ -1782,6 +1799,7 @@ describe("codetour.state", function()
       "line 5",
     }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
+    state.create "drift-test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 4, 0 })
     state.add "dispatch"
     assert.equals(4, state.data.active_tour.stops[1].lnum)
@@ -1811,14 +1829,27 @@ describe("codetour.state", function()
     assert.equals(6, fresh.data.active_tour.stops[1].lnum, "offline drift should re-anchor before any buffer load")
   end)
 
-  it("add() auto-creates 'default' tour for friction-free first use", function()
+  it("add() refuses with a clear error when no tour is open", function()
     local tmp = vim.fn.tempname() .. ".lua"
     vim.fn.writefile({ "line 1" }, tmp)
     vim.cmd("e " .. vim.fn.fnameescape(tmp))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+    local captured
+    local original_notify = vim.notify
+    vim.notify = function(msg, _)
+      captured = msg
+    end
+
     state.add "first"
-    assert.equals("default", state.data.active_tour.name)
-    assert.equals(1, #state.data.active_tour.stops)
+
+    vim.notify = original_notify
+    assert.is_nil(state.data.active_tour, "no tour should be auto-created any more")
+    assert.is_truthy(captured and captured:match "no tour open", "error must mention 'no tour open'")
+    assert.is_truthy(
+      captured:match ":CodeTour open" or captured:match ":CodeTour create",
+      "error must point at the recovery commands"
+    )
   end)
 
   it("edit_note() requires an active tour", function()
@@ -1921,6 +1952,7 @@ describe("codetour.state", function()
     package.loaded["codetour.notes"] = nil
     package.loaded["codetour.anchor"] = nil
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     local notes = require "codetour.notes"
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -1947,6 +1979,7 @@ describe("codetour.state", function()
     package.loaded["codetour.notes"] = nil
     package.loaded["codetour.anchor"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     require("codetour.config").merge { note_prefix = "({idx}/{total}) " }
 
     -- Two stops in file A
@@ -1992,6 +2025,7 @@ describe("codetour.state", function()
     package.loaded["codetour.notes"] = nil
     package.loaded["codetour.anchor"] = nil
     local state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
@@ -2013,6 +2047,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     state.add "first"
     assert.equals(1, #state.data.active_tour.stops)
     -- Same line, different note text → should still refuse
@@ -2029,6 +2064,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.cmd("e " .. vim.fn.fnameescape(tmp1))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -2048,6 +2084,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
@@ -2068,6 +2105,7 @@ describe("codetour.state", function()
   it("remove() bails when no stop is in the current buffer", function()
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.cmd "enew"
     state.data.active_tour = Tour.new "default"
     state.data.active_tour.stops = { { file = "/elsewhere/file.lua", lnum = 1, col = 0, note = "x", context = "" } }
@@ -2083,6 +2121,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     -- Three stops, then prime a tour qf and move to entry 3
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -2116,6 +2155,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
@@ -2144,6 +2184,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
@@ -2176,9 +2217,10 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "first-tour" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
-    state.add "first" -- auto-creates "default"
+    state.add "first"
 
     vim.fn.setqflist({}, " ", {
       title = "tour:test",
@@ -2198,6 +2240,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "first"
@@ -2228,6 +2271,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     -- Three stops at lines 5, 2, 4 — added in non-sorted order to verify
     -- next_stop_in_buf sorts by lnum, not by stop index.
@@ -2263,6 +2307,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.api.nvim_win_set_cursor(0, { 2, 0 })
     state.add "first by line"
@@ -2293,6 +2338,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "only stop"
 
@@ -2320,6 +2366,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
     state.add "only stop"
 
@@ -2347,6 +2394,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
 
     vim.cmd("e " .. vim.fn.fnameescape(fileA))
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -2371,6 +2419,7 @@ describe("codetour.state", function()
 
     package.loaded["codetour.state"] = nil
     state = require "codetour.state"
+    state.create "test" -- Phase 10B: tour must be open before state.add
     vim.api.nvim_win_set_cursor(0, { 1, 0 })
     state.add "one"
     vim.api.nvim_win_set_cursor(0, { 3, 0 })

@@ -1,6 +1,5 @@
 local config = require "codetour.config"
 local state = require "codetour.state"
-local qf = require "codetour.qf"
 
 local M = {}
 
@@ -68,9 +67,32 @@ function M.create(name)
   state.create(name)
 end
 
----@param name string? Tour name to switch to (required)
-function M.select(name)
-  state.select(name)
+---Open a tour. With a name, opens that tour (errors if not found). Without
+---a name, opens the last-active tour if `_active_tour.txt` remembers one,
+---otherwise falls back to a picker over all tours. Activating a tour turns
+---on its decorations and populates the quickfix list (and schedules
+---`cfirst` + `cwindow`).
+---@param name string?
+function M.open(name)
+  if name == nil or name == "" then
+    local storage_mod = require "codetour.storage"
+    local last = storage_mod.read_active()
+    if last then
+      state.open(last)
+      return
+    end
+    -- Nothing remembered → tour picker (it'll call state.open on choice)
+    M.pick_tour()
+    return
+  end
+  state.open(name)
+end
+
+---Close the currently-open tour: remove decorations + restore the prior qf
+---list. The on-disk pointer is preserved so :CodeTour open (no args)
+---reopens the same tour later.
+function M.close()
+  state.close()
 end
 
 ---@param name string? Tour name to delete (required)
@@ -140,14 +162,6 @@ function M.toggle_notes()
   local log = require "codetour.log"
   local visible = require("codetour.decoration").toggle_notes(state.data.active_tour)
   log.info("codetour: notes " .. (visible and "shown" or "hidden"))
-end
-
-function M.open()
-  qf.open()
-end
-
-function M.close()
-  qf.close()
 end
 
 return M

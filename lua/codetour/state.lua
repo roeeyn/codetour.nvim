@@ -80,6 +80,13 @@ function M.ensure_loaded()
     return
   end
 
+  local config_mod = require "codetour.config"
+  if not config_mod.opts.auto_open_last_tour then
+    -- Pointer is preserved on disk; :CodeTour open (no args) will use it
+    -- when the user is ready to open the tour explicitly.
+    return
+  end
+
   local tour = storage.load_tour(active_name)
   if tour == nil then
     log.warn(string.format("codetour: active tour '%s' couldn't be loaded; clearing active pointer", active_name))
@@ -88,32 +95,58 @@ function M.ensure_loaded()
   end
 
   detect_offline_drift(tour)
+  -- Auto-open silently: decorations on, qf populated, but no `cfirst`/`cwindow`
+  -- because the user didn't ask to navigate — they just opened nvim.
   M.data.active_tour = tour
+  decoration.refresh_all(tour)
+  require("codetour.qf").open(true) -- skip_jump = true
 end
 
+---Refuses if no tour is open. The message is the first thing new users see
+---when they try a mutation in the "no tour open" state — it has to teach
+---both that the operation refused *and* the two recovery commands.
 local function require_active()
   if M.data.active_tour == nil then
-    log.warn "codetour: no active tour. Use :CodeTour create <name> or :CodeTour select <name> first."
+    log.warn "codetour: no tour open. Run :CodeTour open <name> or :CodeTour create <name> first."
     return false
   end
   return true
 end
 
----Drop all buffer decoration and reset in-memory state.
-local function reset_in_memory()
+---Internal: drop the currently-open tour. Detaches decorations and restores
+---the prior qf list, but does NOT touch _active_tour.txt on disk — the
+---pointer is preserved so :CodeTour open (no args) reopens later. Used by
+---state.close and by switch paths inside state.open.
+local function deactivate()
+  if M.data.active_tour == nil then
+    return
+  end
   decoration.detach_all()
+  require("codetour.qf").close()
   M.data.active_tour = nil
 end
 
----Re-render decoration across all loaded buffers, then sync qf.
-local function rehydrate_all_buffers()
-  decoration.refresh_all(M.data.active_tour)
-  local qf = require "codetour.qf"
-  qf.update_if_tour_active(M.stops())
+---Internal: activate `tour` — set it as the open tour, render decorations,
+---populate qf. `skip_jump` controls whether qf.open also fires the deferred
+---`cfirst` + `cwindow` (user-driven :CodeTour open: false; startup auto-open
+---and create-of-empty-tour: true).
+local function activate(tour, skip_jump)
+  -- If switching from a previous open tour, drop its decorations first.
+  -- We don't restore prior qf here because we're about to overwrite the
+  -- qf with the new tour's stops anyway.
+  if M.data.active_tour ~= nil and M.data.active_tour ~= tour then
+    decoration.detach_all()
+  end
+  M.data.active_tour = tour
+  decoration.refresh_all(tour)
+  require("codetour.qf").open(skip_jump)
 end
 
----Create a new empty tour and make it active. Refuses if name already exists
----or contains characters that would conflict with the on-disk filename.
+---Create a new empty tour and immediately open it. Refuses if name already
+---exists or contains characters that would conflict with the on-disk
+---filename. The newly-created tour is auto-opened (decorations + qf both
+---on) so `:CodeTour add` works right after, without needing a separate
+---`:CodeTour open`.
 ---@param name string?
 function M.create(name)
   if name == nil or name == "" then
@@ -131,45 +164,73 @@ function M.create(name)
 
   for _, existing in ipairs(storage.list_tours()) do
     if existing == name then
-      log.warn(string.format("codetour: tour '%s' already exists; use :CodeTour select to switch", name))
+      log.warn(string.format("codetour: tour '%s' already exists; use :CodeTour open to switch to it", name))
       return
     end
   end
 
-  reset_in_memory()
-  M.data.active_tour = Tour.new(name)
-  storage.save_tour(M.data.active_tour)
-  storage.write_active(name)
+  -- Close whatever's currently open (restore prior qf, detach decorations)
+  -- before swapping in the new empty tour.
+  deactivate()
 
-  -- No stops to render yet, but sync qf in case a tour view was active.
-  local qf = require "codetour.qf"
-  qf.update_if_tour_active(M.data.active_tour.stops)
+  local tour = Tour.new(name)
+  storage.save_tour(tour)
+  storage.write_active(name)
+  -- Empty qf for an empty tour — qf.open bails on zero stops via a warn,
+  -- so skip its qf-populate work and just turn on decorations directly.
+  -- Calling activate would trigger the "no stops to open" warn. Inline the
+  -- minimal activate path instead.
+  M.data.active_tour = tour
+  decoration.refresh_all(tour)
 
   log.info(string.format("codetour: created tour '%s'", name))
 end
 
----Switch to an existing tour. No-op with a warning if `name` doesn't exist.
+---Open an existing tour by name. Activates decorations + populates the
+---quickfix list + schedules `cfirst` / `cwindow`. Used to be split into
+---`:CodeTour select` (switch active) + `:CodeTour open` (populate qf);
+---now both jobs live here.
 ---@param name string?
-function M.select(name)
+function M.open(name)
   if name == nil or name == "" then
-    log.warn "codetour: usage: :CodeTour select <name>"
+    log.warn "codetour: usage: :CodeTour open <name>"
     return
   end
   M.ensure_loaded()
 
-  local tour = storage.load_tour(name)
-  if tour == nil then
-    log.warn(string.format("codetour: tour '%s' not found", name))
-    return
+  local tour
+  if M.data.active_tour and M.data.active_tour.name == name then
+    -- Re-opening the same tour: act idempotently — refresh decorations and
+    -- repopulate qf, but don't reload from disk (live extmarks are more
+    -- authoritative than the persisted lnums for an already-loaded tour).
+    tour = M.data.active_tour
+  else
+    tour = storage.load_tour(name)
+    if tour == nil then
+      log.warn(string.format("codetour: tour '%s' not found", name))
+      return
+    end
+    detect_offline_drift(tour)
   end
 
-  reset_in_memory()
-  detect_offline_drift(tour)
-  M.data.active_tour = tour
+  activate(tour, false) -- with the deferred cfirst+cwindow
   storage.write_active(name)
-  rehydrate_all_buffers()
+  log.info(string.format("codetour: opened tour '%s' (%d stops)", name, #tour.stops))
+end
 
-  log.info(string.format("codetour: selected tour '%s' (%d stops)", name, #M.data.active_tour.stops))
+---Close the currently-open tour. Removes decorations + restores the prior
+---qf list. The active-tour pointer on disk is **preserved** so the user can
+---reopen with bare `:CodeTour open` (no name) — or so the next nvim start
+---re-opens it if `auto_open_last_tour` is on.
+function M.close()
+  M.ensure_loaded()
+  if M.data.active_tour == nil then
+    log.warn "codetour: no tour is open"
+    return
+  end
+  local name = M.data.active_tour.name
+  deactivate()
+  log.info(string.format("codetour: closed tour '%s'", name))
 end
 
 ---Rename the currently-active tour. Refuses if no tour is active, if
@@ -254,10 +315,11 @@ function M.delete(name)
   end
 
   if M.data.active_tour and M.data.active_tour.name == name then
-    reset_in_memory()
+    -- We're deleting the open tour: deactivate first so decorations + qf get
+    -- cleaned up, then clear the on-disk pointer (unlike close which keeps
+    -- it — here the tour is gone, there's nothing to remember).
+    deactivate()
     storage.write_active(nil)
-    local qf = require "codetour.qf"
-    qf.update_if_tour_active {}
   end
 
   if storage.delete(name) then
@@ -267,8 +329,9 @@ function M.delete(name)
   end
 end
 
----Add a stop at the cursor to the active tour. Auto-creates a "default" tour
----if none is active, so the very first :CodeTour add "just works."
+---Add a stop at the cursor to the open tour. Refuses (via `require_active`)
+---if no tour is open — the user has to run `:CodeTour open` or
+---`:CodeTour create` first.
 ---@param note string?
 function M.add(note)
   local file = vim.api.nvim_buf_get_name(0)
@@ -277,12 +340,8 @@ function M.add(note)
     return
   end
   M.ensure_loaded()
-
-  -- Auto-create "default" tour for friction-free first use.
-  if M.data.active_tour == nil then
-    M.data.active_tour = Tour.new "default"
-    storage.save_tour(M.data.active_tour) -- materialize the file so :CodeTour select can find it later
-    storage.write_active "default"
+  if not require_active() then
+    return
   end
 
   -- Refresh first so the dedupe check uses current extmark positions, not

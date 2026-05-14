@@ -9,7 +9,7 @@ function M.stops()
   state.ensure_loaded()
 
   if state.data.active_tour == nil then
-    log.warn "codetour: no active tour. Use :CodeTour create or :CodeTour select first."
+    log.warn "codetour: no tour is open. Run :CodeTour open <name> or :CodeTour create <name> first."
     return
   end
 
@@ -83,7 +83,7 @@ function M.tours()
     if entry == nil then
       return
     end
-    state.select(entry.tour.name)
+    state.open(entry.tour.name)
   end)
 end
 

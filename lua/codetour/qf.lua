@@ -16,7 +16,12 @@ local function snapshot()
   }
 end
 
-function M.open()
+---Populate the quickfix list with the active tour's stops and (unless
+---`skip_jump` is true) schedule `cfirst` + `cwindow`. Bails early with a
+---warn if no stops to show. Snapshots the *prior* qf list once on first
+---entry into a tour, so `close()` can restore it later.
+---@param skip_jump boolean? if true, populate qf only — caller handles navigation
+function M.open(skip_jump)
   state.ensure_loaded()
   local stops = state.stops()
   if #stops == 0 then
@@ -57,10 +62,12 @@ function M.open()
   -- Neovide the editor looks completely frozen. vim.schedule lets the
   -- callback return immediately, the cmdline clears, then the navigation
   -- runs on the next event-loop tick.
-  vim.schedule(function()
-    vim.cmd "cfirst"
-    vim.cmd "cwindow"
-  end)
+  if not skip_jump then
+    vim.schedule(function()
+      vim.cmd "cfirst"
+      vim.cmd "cwindow"
+    end)
+  end
 end
 
 ---If a tour quickfix list is currently active (title starts with "tour:"),

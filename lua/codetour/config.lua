@@ -14,6 +14,7 @@ local M = {}
 ---@field debug? boolean Show informational notifications. WARN/ERROR are always shown. Default false.
 ---@field storage_path? string Where tour files live. Relative paths join to the git root; absolute paths used as-is. Default ".codetour" (visible at repo root, easily committed/shared). Set to ".git/info/codetour" for the legacy hidden behavior.
 ---@field signs? CodeTour.SignsOpts Sign-column markers config
+---@field auto_open_last_tour? boolean On nvim startup, reopen the last-open tour (turning on decorations + qf list). Default true — set false to start with no tour open and require an explicit :CodeTour open.
 
 ---@type CodeTour.Opts
 M.defaults = {
@@ -23,6 +24,7 @@ M.defaults = {
   note_prefix = "{name} ({idx}/{total}): ", -- scannable prefix; set to "" to disable
   debug = false, -- when false, INFO-level confirmations are suppressed; WARN/ERROR always show
   storage_path = ".codetour", -- relative to git root; visible & committable. Override with absolute path for non-git workflows.
+  auto_open_last_tour = true, -- on startup, reopen last-active tour. Set false to start clean.
   signs = {
     enabled = true,
     text = nil, -- nil = use the stop's 1-based index (1, 2, ...); set a string for a fixed marker like "●"

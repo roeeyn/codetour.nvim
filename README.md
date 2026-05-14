@@ -43,41 +43,43 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
 ## Quick start
 
 ```vim
+:CodeTour create auth-flow    " creates an empty tour and opens it (decorations + qf on)
+
 :e some-file.lua
 " cursor on the entry-point line
-:CodeTour add entry point     " auto-creates a "default" tour on first add
+:CodeTour add entry point
 
 :e other-file.lua
 " cursor on the dispatch handler
 :CodeTour add dispatch handler
 
-:CodeTour open    " populate quickfix, jump to stop 1
-:cnext            " walk to stop 2
-:CodeTour close   " restore your prior quickfix list
+:cnext                        " walk the tour stop-by-stop
+:CodeTour close               " hide decorations + restore your prior quickfix list
 ```
 
-Quit Neovim and reopen — the tour is still there.
+Quit Neovim and reopen — by default the same tour comes back open (decorations on, qf populated). Set `auto_open_last_tour = false` in `setup({...})` to start with no tour open.
 
 ## Commands
 
-Every codetour action is a subcommand of `:CodeTour`. Type `:CodeTour ` and press `<Tab>` to discover them; `:CodeTour select <Tab>` and `:CodeTour delete <Tab>` complete tour names.
+Every codetour action is a subcommand of `:CodeTour`. Type `:CodeTour ` and press `<Tab>` to discover them; `:CodeTour open <Tab>` and `:CodeTour delete <Tab>` complete tour names.
+
+A tour is either **open** (decorations + qf list both on, mutations allowed) or **not** (nothing visible; `:CodeTour add` / `remove` / `note` refuse). `:CodeTour open` opens; `:CodeTour close` releases.
 
 | Command | Description |
 |---|---|
 | `:CodeTour` | Open the plugin's primary UI: an editable list of all stops with a syntax-highlighted preview. Jump with `<CR>`, reorder by moving lines, edit notes inline, remove by deleting lines. `:w` to apply atomically. |
-| **Tour management** | |
-| `:CodeTour create <name>` | Create a new empty tour and make it active |
-| `:CodeTour select [name]` | Switch the active tour (no arg → opens a picker) |
+| **Tour lifecycle** | |
+| `:CodeTour create <name>` | Create a new empty tour and immediately open it |
+| `:CodeTour open [name]` | Open the named tour (decorations + qf on). No name → reopen the last-open tour, or show a picker if none |
+| `:CodeTour close` | Close the open tour (decorations off, prior qf list restored). The on-disk pointer is preserved, so the same tour reopens later |
+| `:CodeTour rename <new-name>` | Rename the open tour. Errors if the new name collides or contains `/ \ :` |
 | `:CodeTour delete [name]` | Delete a tour (with confirm) |
-| `:CodeTour rename <new-name>` | Rename the currently-active tour. Errors if the new name collides or contains `/ \ :`. |
-| **Stops** | |
+| **Stops** *(require an open tour)* | |
 | `:CodeTour add [note...]` | Add a stop at the cursor with optional inline note |
 | `:CodeTour remove` | Remove the stop nearest the cursor in the current buffer |
 | `:CodeTour note <text>` | Replace the nearest stop's note with the given text |
 | **Navigation** | |
-| `:CodeTour open` | Populate the quickfix list with the active tour, jump to stop 1 |
-| `:CodeTour close` | Restore the quickfix list that was active before `:CodeTour open` |
-| `:CodeTour list` | Open a picker over the active tour's stops; `<CR>` jumps |
+| `:CodeTour list` | Open a picker over the open tour's stops; `<CR>` jumps |
 | `:CodeTour next-stop` | Jump cursor to the next stop in the **current buffer** (by line). Pure cursor movement; no qf side effects |
 | `:CodeTour prev-stop` | Jump cursor to the previous stop in the current buffer |
 | **Display & debug** | |
@@ -115,6 +117,12 @@ require("codetour").setup({
   --   storage_path = "~/.local/share/codetour/myproject"  -- outside repo
   storage_path = ".codetour",
 
+  -- On nvim startup, reopen the last-active tour (turning on decorations
+  -- and populating the qf list). Default true. Set false to start with
+  -- no tour open — the pointer is still kept on disk, so :CodeTour open
+  -- (no args) reopens whatever was open last.
+  auto_open_last_tour = true,
+
   -- Sign-column markers at each stop's line. Each sign shows a 1-cell
   -- prefix glyph followed by the stop's index (e.g. "󰈻1", "󰈻2", ...).
   -- Sign-column is hard-capped at 2 cells, so the prefix only renders for
@@ -140,12 +148,12 @@ require("codetour").setup({
 | `<leader>to` | `:CodeTour open` |
 | `<leader>tc` | `:CodeTour close` |
 | `<leader>tl` | `:CodeTour list` (stop picker) |
-| `<leader>ts` | `:CodeTour select` (tour picker) |
+| `<leader>ts` | `:CodeTour open` (tour picker when no name) |
 | `<leader>tv` | toggle virtual-text notes |
 
 ### Telescope-rendered pickers
 
-`:CodeTour list` and `:CodeTour select` use `vim.ui.select`. To render them in Telescope, install [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim):
+`:CodeTour list` and `:CodeTour open` (no-name picker form) use `vim.ui.select`. To render them in Telescope, install [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim):
 
 ```lua
 {
@@ -208,7 +216,7 @@ If you'd rather keep tours private to your clone, set `storage_path = ".git/info
 
 **Cold-load re-anchoring.** Each stop also persists a 60-char context snippet of its line. When the file is opened in nvim, the plugin searches ±20 lines around the stored position for the snippet and re-anchors there if it moved, notifying you that the stop drifted. For stops whose files aren't open yet, the same scan runs against the file content on disk when the tour becomes active — so `:CodeTour open` populates the quickfix with the correct current line, not the stale persisted one.
 
-**Multi-tour.** Each `:CodeTour create <name>` makes a new file. `:CodeTour select <name>` switches active. The active tour is what `:CodeTour add`, `:CodeTour open`, `:CodeTour list`, etc. operate on.
+**Multi-tour.** Each `:CodeTour create <name>` makes a new file. `:CodeTour open <name>` switches to (or opens) a tour. The open tour is what `:CodeTour add`, `:CodeTour remove`, `:CodeTour list`, etc. operate on — without an open tour, those commands refuse.
 
 **`:CodeTour` (oil-style buffer).** Opens a 25/75 vsplit: editable list on the left, syntax-highlighted preview on the right that follows the cursor. Each line in the list looks like:
 
@@ -232,7 +240,7 @@ Active development:
 - ✅ `virt_lines` notes with configurable prefix and highlight
 - ✅ Stop dedupe, overwrite confirms, qf cursor preservation
 - ✅ Multi-tour support (replaced the original branch-awareness)
-- ✅ `:CodeTour list` / `:CodeTour select` pickers via `vim.ui.select`
+- ✅ Picker UI via `vim.ui.select` for `:CodeTour list` and `:CodeTour open` (no-arg)
 - ✅ `:CodeTour` oil-style editable UI (jump, reorder, edit notes inline, delete; atomic `:w` apply)
 - ✅ Stable per-tour stop ids so remove/replace doesn't shift identities
 - ✅ Default keymaps, edge case audit
@@ -280,11 +288,10 @@ Bypass with `git commit --no-verify` when you really need to.
 
 - Native Telescope extension (`:Telescope codetour stops`) with split-pane
   preview and custom mappings (`<C-d>` delete, `<C-e>` edit-note inline).
-  Until then, `:CodeTour list` and `:CodeTour select` use `vim.ui.select`, which
-  upgrades transparently if the user installs
+  Until then, `:CodeTour list` and `:CodeTour open` (no-arg picker form) use
+  `vim.ui.select`, which upgrades transparently if the user installs
   [`telescope-ui-select.nvim`](https://github.com/nvim-telescope/telescope-ui-select.nvim).
-- Lualine component showing the active tour name + stop count
+- Lualine component showing the open tour name + stop count
   (e.g. `tour: auth-flow [2/5]`). Possibly skip — the qf cwindow already
   surfaces this when open.
 - Create demo (video) of common usage
-- Make sure that the tour add operations only apply if a tour is active

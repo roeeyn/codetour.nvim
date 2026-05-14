@@ -61,17 +61,6 @@ local subcommands = {
     end,
     desc = "Create a new empty tour and make it active",
   },
-  select = {
-    handler = function(args)
-      if args == "" then
-        require("codetour").pick_tour()
-      else
-        require("codetour").select(args)
-      end
-    end,
-    complete = tour_names,
-    desc = "Switch active tour (no arg → picker)",
-  },
   delete = {
     handler = function(args)
       require("codetour").delete(args ~= "" and args or nil)
@@ -104,16 +93,17 @@ local subcommands = {
     desc = "Replace the nearest stop's note with the given text",
   },
   open = {
-    handler = function()
-      require("codetour").open()
+    handler = function(args)
+      require("codetour").open(args ~= "" and args or nil)
     end,
-    desc = "Populate the quickfix list with the active tour",
+    complete = tour_names,
+    desc = "Open a tour (decorations + qf). No name = reopen last or picker",
   },
   close = {
     handler = function()
       require("codetour").close()
     end,
-    desc = "Restore the prior quickfix list",
+    desc = "Close the open tour (remove decorations + restore prior qf)",
   },
   list = {
     handler = function()

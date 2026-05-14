@@ -320,7 +320,7 @@ function M.open()
   local state = require "codetour.state"
   state.ensure_loaded()
   if state.data.active_tour == nil then
-    log.error "codetour: no active tour. Use :CodeTour create or :CodeTour select first."
+    log.error "codetour: no tour is open. Run :CodeTour open <name> or :CodeTour create <name> first."
     return
   end
 
