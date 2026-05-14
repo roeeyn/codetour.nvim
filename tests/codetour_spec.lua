@@ -1706,6 +1706,47 @@ describe("codetour.state", function()
     assert.is_nil(storage.read_active())
   end)
 
+  it("rename() refuses with no active tour", function()
+    state.rename "new-name"
+    assert.is_nil(state.data.active_tour, "no tour should be created by rename")
+    assert.equals(0, #storage.list_tours())
+  end)
+
+  it("rename() refuses invalid characters in the new name", function()
+    state.create "auth"
+    state.rename "auth/v2"
+    assert.equals("auth", state.data.active_tour.name, "active tour name unchanged on invalid input")
+    assert.same({ "auth" }, storage.list_tours())
+  end)
+
+  it("rename() refuses when the new name already exists", function()
+    state.create "auth"
+    state.create "billing" -- billing is now active
+    state.rename "auth" -- billing → auth: would collide
+    assert.equals("billing", state.data.active_tour.name)
+    assert.same({ "auth", "billing" }, storage.list_tours(), "no files moved or removed")
+  end)
+
+  it("rename() is a no-op when the name didn't change", function()
+    state.create "auth"
+    state.rename "auth"
+    assert.equals("auth", state.data.active_tour.name)
+    assert.same({ "auth" }, storage.list_tours())
+  end)
+
+  it("rename() updates in-memory name, active pointer, and filesystem", function()
+    state.create "auth"
+    state.rename "user-auth"
+
+    assert.equals("user-auth", state.data.active_tour.name, "in-memory name updated")
+    assert.equals("user-auth", storage.read_active(), "active-tour pointer updated")
+    assert.same({ "user-auth" }, storage.list_tours(), "old file gone, new file present")
+
+    local info = git.info()
+    assert.equals(0, vim.fn.filereadable(info.root .. "/.codetour/auth.json"), "old file deleted")
+    assert.equals(1, vim.fn.filereadable(info.root .. "/.codetour/user-auth.json"), "new file written")
+  end)
+
   it("ensure_loaded() restores the last-active tour on a fresh load", function()
     state.create "billing"
     -- New module instance, simulating nvim restart

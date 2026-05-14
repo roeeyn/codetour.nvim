@@ -172,6 +172,60 @@ function M.select(name)
   log.info(string.format("codetour: selected tour '%s' (%d stops)", name, #M.data.active_tour.stops))
 end
 
+---Rename the currently-active tour. Refuses if no tour is active, if
+---`new_name` is empty or contains path-unsafe characters, or if a tour
+---with that name already exists.
+---
+---Order matters here: we save the new file *before* deleting the old one,
+---so an interrupted rename leaves the old file intact (still loadable) and
+---the new file as a stray. The user can recover by re-running.
+---@param new_name string?
+function M.rename(new_name)
+  if new_name == nil or new_name == "" then
+    log.warn "codetour: usage: :CodeTour rename <new-name>"
+    return
+  end
+  if new_name:match "[/\\:]" then
+    log.warn(string.format("codetour: tour name '%s' contains invalid characters (/ \\ :)", new_name))
+    return
+  end
+  M.ensure_loaded()
+  if not require_active() then
+    return
+  end
+
+  local old_name = M.data.active_tour.name
+  if old_name == new_name then
+    log.info(string.format("codetour: tour '%s' is already named that", new_name))
+    return
+  end
+
+  for _, existing in ipairs(storage.list_tours()) do
+    if existing == new_name then
+      log.warn(string.format("codetour: tour '%s' already exists", new_name))
+      return
+    end
+  end
+
+  -- In-memory rename happens first so storage.save_tour writes the new file.
+  M.data.active_tour.name = new_name
+  storage.save_tour(M.data.active_tour)
+  if not storage.delete(old_name) then
+    log.warn(string.format("codetour: renamed in memory but failed to delete old tour file '%s'", old_name))
+  end
+  storage.write_active(new_name)
+
+  -- The {name} placeholder in note_prefix may have changed, so re-render
+  -- notes/signs across loaded buffers. qf gets a fresh items list with
+  -- the new title prefix on the next qf.open; updating in place here too
+  -- keeps an already-open tour view in sync.
+  decoration.refresh_all(M.data.active_tour)
+  local qf = require "codetour.qf"
+  qf.update_if_tour_active(M.data.active_tour.stops)
+
+  log.info(string.format("codetour: renamed tour '%s' to '%s'", old_name, new_name))
+end
+
 ---Delete a tour by name. Confirms first. If the deleted tour is the active
 ---one, clears in-memory state and the active-pointer file.
 ---@param name string?

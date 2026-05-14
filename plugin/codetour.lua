@@ -79,6 +79,12 @@ local subcommands = {
     complete = tour_names,
     desc = "Delete a tour by name (with confirm)",
   },
+  rename = {
+    handler = function(args)
+      require("codetour").rename(args ~= "" and args or nil)
+    end,
+    desc = "Rename the currently-active tour",
+  },
   add = {
     handler = function(args)
       require("codetour").add(args ~= "" and args or nil)

@@ -69,6 +69,7 @@ Every codetour action is a subcommand of `:CodeTour`. Type `:CodeTour ` and pres
 | `:CodeTour create <name>` | Create a new empty tour and make it active |
 | `:CodeTour select [name]` | Switch the active tour (no arg → opens a picker) |
 | `:CodeTour delete [name]` | Delete a tour (with confirm) |
+| `:CodeTour rename <new-name>` | Rename the currently-active tour. Errors if the new name collides or contains `/ \ :`. |
 | **Stops** | |
 | `:CodeTour add [note...]` | Add a stop at the cursor with optional inline note |
 | `:CodeTour remove` | Remove the stop nearest the cursor in the current buffer |
@@ -285,5 +286,5 @@ Bypass with `git commit --no-verify` when you really need to.
 - Lualine component showing the active tour name + stop count
   (e.g. `tour: auth-flow [2/5]`). Possibly skip — the qf cwindow already
   surfaces this when open.
-
+- Create demo (video) of common usage
 - Make sure that the tour add operations only apply if a tour is active

@@ -78,6 +78,11 @@ function M.delete(name)
   state.delete(name)
 end
 
+---@param new_name string? New name for the currently-active tour
+function M.rename(new_name)
+  state.rename(new_name)
+end
+
 ---@return string[] tour names available in storage
 function M.list_tours()
   return state.list_tours()
